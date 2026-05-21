@@ -1,11 +1,11 @@
 mod api;
 mod commands;
 mod models;
-mod update_checker;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use api::RedashClient;
+use moz_cli_version_check::VersionChecker;
 
 #[derive(Parser)]
 #[command(name = "stmo-cli", version)]
@@ -134,17 +134,33 @@ enum DashboardCommands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let version_checker = VersionChecker::new("stmo-cli", env!("CARGO_PKG_VERSION"));
+    version_checker.check_async();
+
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            e.print()?;
+            if e.kind() == clap::error::ErrorKind::DisplayVersion {
+                version_checker.print_warning_sync();
+            } else {
+                version_checker.print_warning();
+            }
+            std::process::exit(e.exit_code());
+        }
+    };
 
     if let Commands::Init = cli.command {
-        return commands::init::init();
+        let result = commands::init::init();
+        version_checker.print_warning();
+        return result;
     }
 
     if let Commands::Update = cli.command {
-        return commands::update::update();
+        let result = commands::update::update();
+        version_checker.print_warning();
+        return result;
     }
-
-    update_checker::check_and_auto_update().await;
 
     let api_key = std::env::var("REDASH_API_KEY")
         .context("REDASH_API_KEY environment variable not set")?;
@@ -208,5 +224,6 @@ async fn main() -> Result<()> {
         Commands::Update => unreachable!("Update handled above"),
     }
 
+    version_checker.print_warning();
     Ok(())
 }

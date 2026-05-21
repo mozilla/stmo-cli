@@ -83,16 +83,14 @@ fn git_available() -> bool {
     Command::new("git")
         .arg("--version")
         .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|output| output.status.success())
 }
 
 fn precommit_available() -> bool {
     Command::new("pre-commit")
         .arg("--version")
         .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|output| output.status.success())
 }
 
 fn detect_os() -> &'static str {
