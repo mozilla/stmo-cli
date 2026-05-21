@@ -93,6 +93,36 @@ fn precommit_available() -> bool {
         .is_ok_and(|output| output.status.success())
 }
 
+fn ensure_git_identity(target_dir: &Path) -> Result<()> {
+    let name_configured = Command::new("git")
+        .args(["config", "user.name"])
+        .current_dir(target_dir)
+        .output()
+        .is_ok_and(|o| o.status.success() && !o.stdout.trim_ascii().is_empty());
+
+    if !name_configured {
+        let set_name = Command::new("git")
+            .args(["config", "user.name", "stmo-cli"])
+            .current_dir(target_dir)
+            .status()
+            .context("Failed to set git user.name")?;
+        if !set_name.success() {
+            anyhow::bail!("git config user.name failed");
+        }
+
+        let set_email = Command::new("git")
+            .args(["config", "user.email", "stmo-cli@noreply"])
+            .current_dir(target_dir)
+            .status()
+            .context("Failed to set git user.email")?;
+        if !set_email.success() {
+            anyhow::bail!("git config user.email failed");
+        }
+    }
+
+    Ok(())
+}
+
 fn detect_os() -> &'static str {
     if cfg!(target_os = "macos") {
         "macos"
@@ -118,6 +148,8 @@ fn setup_git_repo(target_dir: &Path, files_created: bool) -> Result<()> {
             anyhow::bail!("git init failed");
         }
     }
+
+    ensure_git_identity(target_dir)?;
 
     if files_created {
         println!("⚙ Creating initial commit...");
@@ -270,6 +302,12 @@ mod tests {
     use tempfile::TempDir;
     use std::fs;
 
+    fn setup_test_repo(dir: &std::path::Path) {
+        Command::new("git").arg("init").current_dir(dir).status().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(dir).status().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test"]).current_dir(dir).status().unwrap();
+    }
+
     #[test]
     fn test_init_creates_all_files() {
         let temp_dir = TempDir::new().unwrap();
@@ -342,11 +380,7 @@ mod tests {
             return;
         }
 
-        Command::new("git")
-            .arg("init")
-            .current_dir(temp_dir.path())
-            .status()
-            .unwrap();
+        setup_test_repo(temp_dir.path());
 
         fs::write(temp_dir.path().join("existing.txt"), "test").unwrap();
         Command::new("git")
@@ -389,11 +423,7 @@ mod tests {
         fs::create_dir_all(temp_dir.path().join("dashboards")).unwrap();
         fs::write(temp_dir.path().join("dashboards/.gitkeep"), "").unwrap();
 
-        Command::new("git")
-            .arg("init")
-            .current_dir(temp_dir.path())
-            .status()
-            .unwrap();
+        setup_test_repo(temp_dir.path());
         Command::new("git")
             .args(["add", "."])
             .current_dir(temp_dir.path())
