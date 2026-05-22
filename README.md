@@ -20,11 +20,21 @@ stmo-cli works great with the [mozdata-claude-plugin](https://github.com/mozilla
 
 ## Installation
 
-```bash
-cargo install stmo-cli
+### For people who already have the Firefox source stored locally
+
+```
+cd /path/to/your/firefox/source/folder
+./mach bootstrap
 ```
 
-Or build from source:
+### For anyone else
+Install [cargo-binstall](https://docs.rs/crate/cargo-binstall/latest).
+
+```
+cargo binstall stmo-cli
+```
+
+### Build from source:
 
 ```bash
 cargo build --release
