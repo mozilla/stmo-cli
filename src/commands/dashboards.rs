@@ -331,6 +331,29 @@ fn find_dashboard_yaml(dashboard_slug: &str) -> Result<PathBuf> {
     Ok(yaml_files[0].path())
 }
 
+async fn resolve_widget_options(
+    client: &RedashClient,
+    widget: &WidgetMetadata,
+    query_cache: &mut HashMap<u64, Query>,
+) -> Result<(crate::models::WidgetOptions, bool)> {
+    let mut options = widget.options.clone();
+    let has_params = if let Some(query_id) = widget.query_id
+        && let Some(mappings) = auto_populate_parameter_mappings(
+            client,
+            query_id,
+            options.parameter_mappings.as_ref(),
+            query_cache,
+        )
+        .await?
+    {
+        options.parameter_mappings = Some(mappings);
+        true
+    } else {
+        false
+    };
+    Ok((options, has_params))
+}
+
 async fn deploy_single_dashboard(client: &RedashClient, dashboard_slug: &str) -> Result<String> {
     let yaml_path = find_dashboard_yaml(dashboard_slug)?;
     let yaml_content = fs::read_to_string(&yaml_path)
@@ -377,56 +400,22 @@ async fn deploy_single_dashboard(client: &RedashClient, dashboard_slug: &str) ->
     let mut any_widget_has_params = false;
 
     for widget in &local_metadata.widgets {
+        let (options, has_params) =
+            resolve_widget_options(client, widget, &mut query_cache).await?;
+        if has_params {
+            any_widget_has_params = true;
+        }
+        let payload = CreateWidget {
+            dashboard_id: server_dashboard_id,
+            visualization_id: resolve_visualization_id(client, widget, &mut query_cache).await?,
+            text: widget.text.clone(),
+            options,
+            width: if widget.id == 0 { 1 } else { widget.width },
+        };
         if widget.id == 0 {
-            let mut options = widget.options.clone();
-
-            if let Some(query_id) = widget.query_id
-                && let Some(mappings) = auto_populate_parameter_mappings(
-                    client,
-                    query_id,
-                    options.parameter_mappings.as_ref(),
-                    &mut query_cache,
-                )
-                .await?
-            {
-                options.parameter_mappings = Some(mappings);
-                any_widget_has_params = true;
-            }
-
-            let create_widget = CreateWidget {
-                dashboard_id: server_dashboard_id,
-                visualization_id: resolve_visualization_id(client, widget, &mut query_cache)
-                    .await?,
-                text: widget.text.clone(),
-                width: 1,
-                options,
-            };
-            client.create_widget(&create_widget).await?;
+            client.create_widget(&payload).await?;
         } else {
-            let mut options = widget.options.clone();
-
-            if let Some(query_id) = widget.query_id
-                && let Some(mappings) = auto_populate_parameter_mappings(
-                    client,
-                    query_id,
-                    options.parameter_mappings.as_ref(),
-                    &mut query_cache,
-                )
-                .await?
-            {
-                options.parameter_mappings = Some(mappings);
-                any_widget_has_params = true;
-            }
-
-            let update_payload = CreateWidget {
-                dashboard_id: server_dashboard_id,
-                visualization_id: resolve_visualization_id(client, widget, &mut query_cache)
-                    .await?,
-                text: widget.text.clone(),
-                width: widget.width,
-                options,
-            };
-            client.update_widget(widget.id, &update_payload).await?;
+            client.update_widget(widget.id, &payload).await?;
         }
     }
 

@@ -166,52 +166,15 @@ enum DashboardCommands {
     },
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let version_checker = VersionChecker::new("stmo-cli", env!("CARGO_PKG_VERSION"));
-    version_checker.check_async();
-
-    let cli = match Cli::try_parse() {
-        Ok(cli) => cli,
-        Err(e) => {
-            e.print()?;
-            if e.kind() == clap::error::ErrorKind::DisplayVersion {
-                version_checker.print_warning_sync();
-            } else {
-                version_checker.print_warning();
-            }
-            std::process::exit(e.exit_code());
-        }
-    };
-
-    if let Commands::Init = cli.command {
-        let result = commands::init::init();
-        version_checker.print_warning();
-        return result;
-    }
-
-    if let Commands::Update = cli.command {
-        let result = commands::update::update();
-        version_checker.print_warning();
-        return result;
-    }
-
-    let api_key =
-        std::env::var("REDASH_API_KEY").context("REDASH_API_KEY environment variable not set")?;
-
-    let base_url = std::env::var("REDASH_URL")
-        .unwrap_or_else(|_| "https://sql.telemetry.mozilla.org".to_string());
-
-    let client = RedashClient::new(base_url, &api_key)?;
-
-    match cli.command {
+async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
+    match command {
         Commands::Discover => commands::discover::discover(&client).await?,
-        Commands::Init => unreachable!("Init handled above"),
+        Commands::Init | Commands::Update => unreachable!(),
         Commands::Fetch { query_ids, all } => {
-            commands::fetch::fetch(&client, query_ids, all).await?
+            commands::fetch::fetch(&client, query_ids, all).await?;
         }
         Commands::Deploy { query_ids, all } => {
-            commands::deploy::deploy(&client, query_ids, all).await?
+            commands::deploy::deploy(&client, query_ids, all).await?;
         }
         Commands::Execute {
             query_id,
@@ -224,7 +187,6 @@ async fn main() -> Result<()> {
             let output_format = format
                 .parse::<commands::OutputFormat>()
                 .context("Invalid output format")?;
-            let limit_rows = limit;
             commands::execute::execute(
                 &client,
                 query_id,
@@ -232,7 +194,7 @@ async fn main() -> Result<()> {
                 output_format,
                 interactive,
                 timeout,
-                limit_rows,
+                limit,
             )
             .await?;
         }
@@ -245,7 +207,6 @@ async fn main() -> Result<()> {
             let output_format = format
                 .parse::<commands::OutputFormat>()
                 .context("Invalid output format")?;
-
             if let Some(id) = data_source_id {
                 commands::datasources::show_data_source(
                     &client,
@@ -281,21 +242,59 @@ async fn main() -> Result<()> {
         Commands::Dashboards { command } => match command {
             DashboardCommands::Discover => commands::dashboards::discover(&client).await?,
             DashboardCommands::Fetch { slugs } => {
-                commands::dashboards::fetch(&client, slugs.clone()).await?
+                commands::dashboards::fetch(&client, slugs).await?;
             }
             DashboardCommands::Deploy { slugs, all } => {
-                commands::dashboards::deploy(&client, slugs.clone(), all).await?
+                commands::dashboards::deploy(&client, slugs, all).await?;
             }
             DashboardCommands::Archive { slugs } => {
-                commands::dashboards::archive(&client, slugs.clone()).await?
+                commands::dashboards::archive(&client, slugs).await?;
             }
             DashboardCommands::Unarchive { slugs } => {
-                commands::dashboards::unarchive(&client, slugs.clone()).await?
+                commands::dashboards::unarchive(&client, slugs).await?;
             }
         },
-        Commands::Update => unreachable!("Update handled above"),
+    }
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let version_checker = VersionChecker::new("stmo-cli", env!("CARGO_PKG_VERSION"));
+    version_checker.check_async();
+
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            e.print()?;
+            if e.kind() == clap::error::ErrorKind::DisplayVersion {
+                version_checker.print_warning_sync();
+            } else {
+                version_checker.print_warning();
+            }
+            std::process::exit(e.exit_code());
+        }
+    };
+
+    if let Commands::Init = cli.command {
+        let result = commands::init::init();
+        version_checker.print_warning();
+        return result;
     }
 
+    if let Commands::Update = cli.command {
+        let result = commands::update::update();
+        version_checker.print_warning();
+        return result;
+    }
+
+    let api_key =
+        std::env::var("REDASH_API_KEY").context("REDASH_API_KEY environment variable not set")?;
+    let base_url = std::env::var("REDASH_URL")
+        .unwrap_or_else(|_| "https://sql.telemetry.mozilla.org".to_string());
+    let client = RedashClient::new(base_url, &api_key)?;
+
+    run_command(client, cli.command).await?;
     version_checker.print_warning();
     Ok(())
 }
