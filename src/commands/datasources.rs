@@ -1,9 +1,9 @@
 #![allow(clippy::missing_errors_doc)]
 
-use anyhow::Result;
+use super::OutputFormat;
 use crate::api::RedashClient;
 use crate::models::DataSource;
-use super::OutputFormat;
+use anyhow::Result;
 
 fn build_status_string(ds: &DataSource) -> String {
     let mut status_parts = Vec::new();
@@ -63,7 +63,10 @@ pub async fn show_data_source(
     let ds = client.get_data_source(data_source_id).await?;
 
     let schema = if show_schema {
-        match client.get_data_source_schema(data_source_id, refresh_schema).await {
+        match client
+            .get_data_source_schema(data_source_id, refresh_schema)
+            .await
+        {
             Ok(s) => Some(s),
             Err(e) => {
                 eprintln!("Error fetching schema: {e:#}");
@@ -254,10 +257,22 @@ mod tests {
 
     #[test]
     fn test_output_format_from_str() {
-        assert!(matches!("json".parse::<OutputFormat>().unwrap(), OutputFormat::Json));
-        assert!(matches!("JSON".parse::<OutputFormat>().unwrap(), OutputFormat::Json));
-        assert!(matches!("table".parse::<OutputFormat>().unwrap(), OutputFormat::Table));
-        assert!(matches!("TABLE".parse::<OutputFormat>().unwrap(), OutputFormat::Table));
+        assert!(matches!(
+            "json".parse::<OutputFormat>().unwrap(),
+            OutputFormat::Json
+        ));
+        assert!(matches!(
+            "JSON".parse::<OutputFormat>().unwrap(),
+            OutputFormat::Json
+        ));
+        assert!(matches!(
+            "table".parse::<OutputFormat>().unwrap(),
+            OutputFormat::Table
+        ));
+        assert!(matches!(
+            "TABLE".parse::<OutputFormat>().unwrap(),
+            OutputFormat::Table
+        ));
         assert!("invalid".parse::<OutputFormat>().is_err());
         assert!("csv".parse::<OutputFormat>().is_err());
     }

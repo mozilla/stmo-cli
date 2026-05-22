@@ -1,14 +1,14 @@
-pub mod discover;
-pub mod init;
-pub mod fetch;
-pub mod deploy;
-pub mod execute;
-pub mod datasources;
 pub mod archive;
 pub mod dashboards;
+pub mod datasources;
+pub mod deploy;
+pub mod discover;
+pub mod execute;
+pub mod fetch;
+pub mod init;
 pub mod update;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 #[derive(Debug, Clone, Copy)]
 pub enum OutputFormat {

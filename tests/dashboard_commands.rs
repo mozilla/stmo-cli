@@ -3,12 +3,12 @@
 
 mod common;
 
-use stmo_cli::api::RedashClient;
 use common::*;
-use tempfile::TempDir;
 use std::env;
-use tokio::sync::Mutex;
 use std::sync::OnceLock;
+use stmo_cli::api::RedashClient;
+use tempfile::TempDir;
+use tokio::sync::Mutex;
 
 static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -55,7 +55,14 @@ async fn test_fetch_with_all_failures_returns_error() {
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
-    let result = stmo_cli::commands::dashboards::fetch(&client, vec!["firefox-desktop-on-steamos".to_string(), "test-dashboard".to_string()]).await;
+    let result = stmo_cli::commands::dashboards::fetch(
+        &client,
+        vec![
+            "firefox-desktop-on-steamos".to_string(),
+            "test-dashboard".to_string(),
+        ],
+    )
+    .await;
 
     assert!(result.is_err());
     let error = result.unwrap_err();
@@ -80,13 +87,26 @@ async fn test_fetch_with_partial_failures_returns_error() {
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
-    let result = stmo_cli::commands::dashboards::fetch(&client, vec!["firefox-desktop-on-steamos".to_string(), "test-dashboard".to_string()]).await;
+    let result = stmo_cli::commands::dashboards::fetch(
+        &client,
+        vec![
+            "firefox-desktop-on-steamos".to_string(),
+            "test-dashboard".to_string(),
+        ],
+    )
+    .await;
 
     assert!(result.is_err());
     let error = result.unwrap_err();
     let error_msg = error.to_string();
-    assert!(error_msg.contains("dashboard(s) failed to fetch"), "Error was: {error_msg}");
-    assert!(error_msg.contains("test-dashboard"), "Error was: {error_msg}");
+    assert!(
+        error_msg.contains("dashboard(s) failed to fetch"),
+        "Error was: {error_msg}"
+    );
+    assert!(
+        error_msg.contains("test-dashboard"),
+        "Error was: {error_msg}"
+    );
 }
 
 #[tokio::test]
@@ -105,7 +125,14 @@ async fn test_fetch_with_all_success_returns_ok() {
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
-    let result = stmo_cli::commands::dashboards::fetch(&client, vec!["firefox-desktop-on-steamos".to_string(), "test-dashboard".to_string()]).await;
+    let result = stmo_cli::commands::dashboards::fetch(
+        &client,
+        vec![
+            "firefox-desktop-on-steamos".to_string(),
+            "test-dashboard".to_string(),
+        ],
+    )
+    .await;
 
     assert!(result.is_ok());
 
@@ -119,7 +146,8 @@ async fn test_fetch_with_all_success_returns_ok() {
 
     assert_eq!(files.len(), 2);
 
-    let yaml_files: Vec<_> = files.iter()
+    let yaml_files: Vec<_> = files
+        .iter()
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "yaml"))
         .collect();
 
@@ -142,7 +170,14 @@ async fn test_archive_with_all_failures_returns_error() {
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
-    let result = stmo_cli::commands::dashboards::archive(&client, vec!["firefox-desktop-on-steamos".to_string(), "test-dashboard".to_string()]).await;
+    let result = stmo_cli::commands::dashboards::archive(
+        &client,
+        vec![
+            "firefox-desktop-on-steamos".to_string(),
+            "test-dashboard".to_string(),
+        ],
+    )
+    .await;
 
     assert!(result.is_err());
     let error = result.unwrap_err();
@@ -173,11 +208,22 @@ async fn test_unarchive_with_failures_returns_error() {
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
-    let result = stmo_cli::commands::dashboards::unarchive(&client, vec!["firefox-desktop-on-steamos".to_string(), "test-dashboard".to_string()]).await;
+    let result = stmo_cli::commands::dashboards::unarchive(
+        &client,
+        vec![
+            "firefox-desktop-on-steamos".to_string(),
+            "test-dashboard".to_string(),
+        ],
+    )
+    .await;
 
     assert!(result.is_err());
     let error = result.unwrap_err();
-    assert!(error.to_string().contains("1 dashboard(s) failed to unarchive"));
+    assert!(
+        error
+            .to_string()
+            .contains("1 dashboard(s) failed to unarchive")
+    );
     assert!(error.to_string().contains("firefox-desktop-on-steamos"));
 }
 
@@ -191,14 +237,18 @@ async fn test_fetch_with_triple_dash_slug() {
         2_006_698,
         "Bug 2006698 - ccov build regression",
         "bug-2006698---ccov-build-regression",
-        false
+        false,
     )
-        .mount(&mock_server)
-        .await;
+    .mount(&mock_server)
+    .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
-    let result = stmo_cli::commands::dashboards::fetch(&client, vec!["bug-2006698---ccov-build-regression".to_string()]).await;
+    let result = stmo_cli::commands::dashboards::fetch(
+        &client,
+        vec!["bug-2006698---ccov-build-regression".to_string()],
+    )
+    .await;
 
     assert!(result.is_ok());
 
@@ -206,7 +256,10 @@ async fn test_fetch_with_triple_dash_slug() {
     assert!(dashboards_dir.exists());
 
     let expected_file = dashboards_dir.join("2006698-bug-2006698---ccov-build-regression.yaml");
-    assert!(expected_file.exists(), "Expected file {expected_file:?} to exist");
+    assert!(
+        expected_file.exists(),
+        "Expected file {expected_file:?} to exist"
+    );
 
     let yaml_content = std::fs::read_to_string(&expected_file).unwrap();
     assert!(yaml_content.contains("slug: bug-2006698---ccov-build-regression"));
@@ -223,10 +276,10 @@ async fn test_deploy_with_triple_dash_slug() {
         2_006_698,
         "Bug 2006698 - ccov build regression",
         "bug-2006698---ccov-build-regression",
-        false
+        false,
     )
-        .mount(&mock_server)
-        .await;
+    .mount(&mock_server)
+    .await;
 
     mock_update_dashboard(2_006_698, "Bug 2006698 - ccov build regression")
         .mount(&mock_server)
@@ -237,10 +290,10 @@ async fn test_deploy_with_triple_dash_slug() {
         2_006_698,
         "Bug 2006698 - ccov build regression",
         "bug-2006698---ccov-build-regression",
-        false
+        false,
     )
-        .mount(&mock_server)
-        .await;
+    .mount(&mock_server)
+    .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
@@ -256,9 +309,18 @@ dashboard_filters_enabled: false
 tags: []
 widgets: []
 ";
-    std::fs::write("dashboards/2006698-bug-2006698---ccov-build-regression.yaml", yaml_content).unwrap();
+    std::fs::write(
+        "dashboards/2006698-bug-2006698---ccov-build-regression.yaml",
+        yaml_content,
+    )
+    .unwrap();
 
-    let result = stmo_cli::commands::dashboards::deploy(&client, vec!["bug-2006698---ccov-build-regression".to_string()], false).await;
+    let result = stmo_cli::commands::dashboards::deploy(
+        &client,
+        vec!["bug-2006698---ccov-build-regression".to_string()],
+        false,
+    )
+    .await;
 
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 }
@@ -273,14 +335,12 @@ async fn test_archive_with_triple_dash_slug() {
         2_006_698,
         "Bug 2006698 - ccov build regression",
         "bug-2006698---ccov-build-regression",
-        false
+        false,
     )
-        .mount(&mock_server)
-        .await;
+    .mount(&mock_server)
+    .await;
 
-    mock_archive_dashboard(2_006_698)
-        .mount(&mock_server)
-        .await;
+    mock_archive_dashboard(2_006_698).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
@@ -290,10 +350,17 @@ async fn test_archive_with_triple_dash_slug() {
 
     assert!(std::path::Path::new(yaml_file).exists());
 
-    let result = stmo_cli::commands::dashboards::archive(&client, vec!["bug-2006698---ccov-build-regression".to_string()]).await;
+    let result = stmo_cli::commands::dashboards::archive(
+        &client,
+        vec!["bug-2006698---ccov-build-regression".to_string()],
+    )
+    .await;
 
     assert!(result.is_ok());
-    assert!(!std::path::Path::new(yaml_file).exists(), "File should be deleted after archiving");
+    assert!(
+        !std::path::Path::new(yaml_file).exists(),
+        "File should be deleted after archiving"
+    );
 }
 
 #[tokio::test]
@@ -335,17 +402,26 @@ widgets: []
 ";
     std::fs::write("dashboards/0-my-new-dashboard.yaml", yaml_content).unwrap();
 
-    let result = stmo_cli::commands::dashboards::deploy(&client, vec!["my-new-dashboard".to_string()], false).await;
+    let result = stmo_cli::commands::dashboards::deploy(
+        &client,
+        vec!["my-new-dashboard".to_string()],
+        false,
+    )
+    .await;
 
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
     // Old file should be deleted
-    assert!(!std::path::Path::new("dashboards/0-my-new-dashboard.yaml").exists(),
-        "Old 0-*.yaml file should be removed after creation");
+    assert!(
+        !std::path::Path::new("dashboards/0-my-new-dashboard.yaml").exists(),
+        "Old 0-*.yaml file should be removed after creation"
+    );
 
     // New file with server-assigned ID should exist
-    assert!(std::path::Path::new("dashboards/2621-my-new-dashboard.yaml").exists(),
-        "New file with server ID should be created");
+    assert!(
+        std::path::Path::new("dashboards/2621-my-new-dashboard.yaml").exists(),
+        "New file with server ID should be created"
+    );
 }
 
 #[tokio::test]
@@ -362,9 +438,13 @@ async fn test_deploy_auto_populates_parameter_mappings() {
         .mount(&mock_server)
         .await;
 
-    mock_get_query_with_parameters(query_id, "My Query", &[("channel", "enum"), ("date", "date")])
-        .mount(&mock_server)
-        .await;
+    mock_get_query_with_parameters(
+        query_id,
+        "My Query",
+        &[("channel", "enum"), ("date", "date")],
+    )
+    .mount(&mock_server)
+    .await;
 
     mock_create_widget(dashboard_id, 99001)
         .mount(&mock_server)
@@ -382,7 +462,8 @@ async fn test_deploy_auto_populates_parameter_mappings() {
 
     std::fs::create_dir_all("dashboards").unwrap();
 
-    let yaml_content = format!("id: {dashboard_id}
+    let yaml_content = format!(
+        "id: {dashboard_id}
 name: My Parameterized Dashboard
 slug: {slug}
 user_id: 530
@@ -402,14 +483,16 @@ widgets:
         row: 0
         sizeX: 3
         sizeY: 8
-");
-    std::fs::write(format!("dashboards/{dashboard_id}-{slug}.yaml"), yaml_content).unwrap();
+"
+    );
+    std::fs::write(
+        format!("dashboards/{dashboard_id}-{slug}.yaml"),
+        yaml_content,
+    )
+    .unwrap();
 
-    let result = stmo_cli::commands::dashboards::deploy(
-        &client,
-        vec![slug.to_string()],
-        false,
-    ).await;
+    let result =
+        stmo_cli::commands::dashboards::deploy(&client, vec![slug.to_string()], false).await;
 
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
@@ -423,7 +506,10 @@ widgets:
     let body: serde_json::Value = serde_json::from_slice(&widget_create_req.body).unwrap();
     let param_mappings = &body["options"]["parameterMappings"];
 
-    assert!(param_mappings.is_object(), "parameterMappings should be an object, got: {param_mappings}");
+    assert!(
+        param_mappings.is_object(),
+        "parameterMappings should be an object, got: {param_mappings}"
+    );
     assert_eq!(param_mappings["channel"]["type"], "dashboard-level");
     assert_eq!(param_mappings["channel"]["mapTo"], "channel");
     assert_eq!(param_mappings["date"]["type"], "dashboard-level");
@@ -432,8 +518,7 @@ widgets:
     let dashboard_update_req = received
         .iter()
         .find(|r| {
-            r.method.as_str() == "POST"
-                && r.url.path() == format!("/api/dashboards/{dashboard_id}")
+            r.method.as_str() == "POST" && r.url.path() == format!("/api/dashboards/{dashboard_id}")
         })
         .expect("Expected dashboard update request");
 
@@ -483,7 +568,8 @@ async fn test_deploy_resolves_visualization_id_from_query_and_name() {
 
     std::fs::create_dir_all("dashboards").unwrap();
 
-    let yaml_content = format!("id: {dashboard_id}
+    let yaml_content = format!(
+        "id: {dashboard_id}
 name: My Dashboard
 slug: {slug}
 user_id: 530
@@ -501,14 +587,16 @@ widgets:
         row: 0
         sizeX: 3
         sizeY: 8
-");
-    std::fs::write(format!("dashboards/{dashboard_id}-{slug}.yaml"), yaml_content).unwrap();
+"
+    );
+    std::fs::write(
+        format!("dashboards/{dashboard_id}-{slug}.yaml"),
+        yaml_content,
+    )
+    .unwrap();
 
-    let result = stmo_cli::commands::dashboards::deploy(
-        &client,
-        vec![slug.to_string()],
-        false,
-    ).await;
+    let result =
+        stmo_cli::commands::dashboards::deploy(&client, vec![slug.to_string()], false).await;
 
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
@@ -552,7 +640,8 @@ async fn test_deploy_fails_when_visualization_name_not_found() {
 
     std::fs::create_dir_all("dashboards").unwrap();
 
-    let yaml_content = format!("id: {dashboard_id}
+    let yaml_content = format!(
+        "id: {dashboard_id}
 name: My Dashboard
 slug: {slug}
 user_id: 530
@@ -570,14 +659,16 @@ widgets:
         row: 0
         sizeX: 3
         sizeY: 8
-");
-    std::fs::write(format!("dashboards/{dashboard_id}-{slug}.yaml"), yaml_content).unwrap();
+"
+    );
+    std::fs::write(
+        format!("dashboards/{dashboard_id}-{slug}.yaml"),
+        yaml_content,
+    )
+    .unwrap();
 
-    let result = stmo_cli::commands::dashboards::deploy(
-        &client,
-        vec![slug.to_string()],
-        false,
-    ).await;
+    let result =
+        stmo_cli::commands::dashboards::deploy(&client, vec![slug.to_string()], false).await;
 
     assert!(result.is_err(), "Expected deploy to fail");
     let err = result.unwrap_err().to_string();
@@ -648,7 +739,8 @@ async fn test_deploy_updates_existing_widgets() {
 
     std::fs::create_dir_all("dashboards").unwrap();
 
-    let yaml_content = format!("id: {dashboard_id}
+    let yaml_content = format!(
+        "id: {dashboard_id}
 name: My Dashboard
 slug: {slug}
 user_id: 530
@@ -666,31 +758,39 @@ widgets:
         row: 5
         sizeX: 6
         sizeY: 4
-");
-    std::fs::write(format!("dashboards/{dashboard_id}-{slug}.yaml"), yaml_content).unwrap();
+"
+    );
+    std::fs::write(
+        format!("dashboards/{dashboard_id}-{slug}.yaml"),
+        yaml_content,
+    )
+    .unwrap();
 
-    let result = stmo_cli::commands::dashboards::deploy(
-        &client,
-        vec![slug.to_string()],
-        false,
-    ).await;
+    let result =
+        stmo_cli::commands::dashboards::deploy(&client, vec![slug.to_string()], false).await;
 
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
     let received = mock_server.received_requests().await.unwrap();
 
-    let widget_update_req = received
-        .iter()
-        .find(|r| r.method.as_str() == "POST" && r.url.path() == format!("/api/widgets/{widget_id}"));
+    let widget_update_req = received.iter().find(|r| {
+        r.method.as_str() == "POST" && r.url.path() == format!("/api/widgets/{widget_id}")
+    });
 
     assert!(
         widget_update_req.is_some(),
         "Expected POST /api/widgets/{widget_id} but got: {:?}",
-        received.iter().map(|r| format!("{} {}", r.method, r.url.path())).collect::<Vec<_>>()
+        received
+            .iter()
+            .map(|r| format!("{} {}", r.method, r.url.path()))
+            .collect::<Vec<_>>()
     );
 
     let body: serde_json::Value = serde_json::from_slice(&widget_update_req.unwrap().body).unwrap();
-    assert_eq!(body["visualization_id"], 55557, "visualization_id should resolve to Updated Chart");
+    assert_eq!(
+        body["visualization_id"], 55557,
+        "visualization_id should resolve to Updated Chart"
+    );
     assert_eq!(body["options"]["position"]["col"], 3);
     assert_eq!(body["options"]["position"]["row"], 5);
 }

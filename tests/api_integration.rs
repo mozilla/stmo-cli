@@ -3,10 +3,10 @@
 
 mod common;
 
-use stmo_cli::api::RedashClient;
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{method, path, query_param};
 use common::*;
+use stmo_cli::api::RedashClient;
+use wiremock::matchers::{method, path, query_param};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn test_refresh_query_success() {
@@ -30,23 +30,24 @@ async fn test_refresh_query_with_parameters() {
 
     Mock::given(method("POST"))
         .and(path("/api/queries/123/results"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            serde_json::json!({
-                "job": {
-                    "id": "test-job-id",
-                    "status": 1,
-                    "query_result_id": null,
-                    "error": null
-                }
-            })
-        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "job": {
+                "id": "test-job-id",
+                "status": 1,
+                "query_result_id": null,
+                "error": null
+            }
+        })))
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let mut params = std::collections::HashMap::new();
     params.insert("start_date".to_string(), serde_json::json!("2025-01-01"));
-    params.insert("channels".to_string(), serde_json::json!(["release", "beta"]));
+    params.insert(
+        "channels".to_string(),
+        serde_json::json!(["release", "beta"]),
+    );
 
     let job = client.refresh_query(123, Some(params)).await.unwrap();
 
@@ -106,9 +107,7 @@ async fn test_poll_job_failure() {
 async fn test_get_query_result_success() {
     let mock_server = MockServer::start().await;
 
-    mock_get_query_result(123, 456)
-        .mount(&mock_server)
-        .await;
+    mock_get_query_result(123, 456).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let result = client.get_query_result(123, 456).await.unwrap();
@@ -140,7 +139,10 @@ async fn test_execute_query_with_polling_success() {
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = client.execute_query_with_polling(123, None, 10, 100).await.unwrap();
+    let result = client
+        .execute_query_with_polling(123, None, 10, 100)
+        .await
+        .unwrap();
 
     assert_eq!(result.id, 456);
     assert_eq!(result.data.columns.len(), 2);
@@ -196,14 +198,12 @@ async fn test_list_my_queries_pagination() {
         .and(path("/api/queries/my"))
         .and(query_param("page", "1"))
         .and(query_param("page_size", "100"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            serde_json::json!({
-                "results": [],
-                "count": 0,
-                "page": 1,
-                "page_size": 100
-            })
-        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "results": [],
+            "count": 0,
+            "page": 1,
+            "page_size": 100
+        })))
         .mount(&mock_server)
         .await;
 
@@ -219,9 +219,7 @@ async fn test_list_my_queries_pagination() {
 async fn test_list_data_sources_success() {
     let mock_server = MockServer::start().await;
 
-    mock_list_data_sources()
-        .mount(&mock_server)
-        .await;
+    mock_list_data_sources().mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let data_sources = client.list_data_sources().await.unwrap();
@@ -239,9 +237,7 @@ async fn test_list_data_sources_success() {
 async fn test_list_data_sources_empty() {
     let mock_server = MockServer::start().await;
 
-    mock_list_data_sources_empty()
-        .mount(&mock_server)
-        .await;
+    mock_list_data_sources_empty().mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let data_sources = client.list_data_sources().await.unwrap();
@@ -253,9 +249,7 @@ async fn test_list_data_sources_empty() {
 async fn test_get_data_source_success() {
     let mock_server = MockServer::start().await;
 
-    mock_get_data_source(63)
-        .mount(&mock_server)
-        .await;
+    mock_get_data_source(63).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let data_source = client.get_data_source(63).await.unwrap();
@@ -263,7 +257,10 @@ async fn test_get_data_source_success() {
     assert_eq!(data_source.id, 63);
     assert_eq!(data_source.name, "Test Data Source");
     assert_eq!(data_source.ds_type, "bigquery");
-    assert_eq!(data_source.description, Some("Test description".to_string()));
+    assert_eq!(
+        data_source.description,
+        Some("Test description".to_string())
+    );
 }
 
 #[tokio::test]
@@ -284,9 +281,7 @@ async fn test_get_data_source_not_found() {
 async fn test_get_data_source_schema_success() {
     let mock_server = MockServer::start().await;
 
-    mock_get_data_source_schema(63)
-        .mount(&mock_server)
-        .await;
+    mock_get_data_source_schema(63).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let schema = client.get_data_source_schema(63, false).await.unwrap();
@@ -336,9 +331,7 @@ async fn test_archive_query_success() {
 async fn test_archive_query_not_found() {
     let mock_server = MockServer::start().await;
 
-    mock_archive_query_not_found(999)
-        .mount(&mock_server)
-        .await;
+    mock_archive_query_not_found(999).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let result = client.archive_query(999).await;
@@ -412,9 +405,7 @@ async fn test_get_query_not_archived() {
 async fn test_list_favorite_dashboards_success() {
     let mock_server = MockServer::start().await;
 
-    mock_list_favorite_dashboards(2)
-        .mount(&mock_server)
-        .await;
+    mock_list_favorite_dashboards(2).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let response = client.list_favorite_dashboards(1, 100).await.unwrap();
@@ -521,9 +512,7 @@ async fn test_update_dashboard_success() {
 async fn test_archive_dashboard_success() {
     let mock_server = MockServer::start().await;
 
-    mock_archive_dashboard(2570)
-        .mount(&mock_server)
-        .await;
+    mock_archive_dashboard(2570).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let result = client.archive_dashboard(2570).await;
@@ -579,9 +568,7 @@ async fn test_unarchive_dashboard_forbidden() {
 async fn test_create_widget_success() {
     let mock_server = MockServer::start().await;
 
-    mock_create_widget(2570, 75035)
-        .mount(&mock_server)
-        .await;
+    mock_create_widget(2570, 75035).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
@@ -611,9 +598,7 @@ async fn test_create_widget_success() {
 async fn test_delete_widget_success() {
     let mock_server = MockServer::start().await;
 
-    mock_delete_widget(75035)
-        .mount(&mock_server)
-        .await;
+    mock_delete_widget(75035).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let result = client.delete_widget(75035).await;
@@ -625,9 +610,7 @@ async fn test_delete_widget_success() {
 async fn test_delete_widget_not_found() {
     let mock_server = MockServer::start().await;
 
-    mock_delete_widget_not_found(999)
-        .mount(&mock_server)
-        .await;
+    mock_delete_widget_not_found(999).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let result = client.delete_widget(999).await;
@@ -641,10 +624,10 @@ async fn test_refresh_query_bad_request_includes_error_body() {
 
     mock_refresh_query_bad_request(
         123,
-        "The following parameter values are incompatible with their definitions: worker_pool"
+        "The following parameter values are incompatible with their definitions: worker_pool",
     )
-        .mount(&mock_server)
-        .await;
+    .mount(&mock_server)
+    .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let result = client.refresh_query(123, None).await;
@@ -652,16 +635,17 @@ async fn test_refresh_query_bad_request_includes_error_body() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.to_string().contains("400"));
-    assert!(err.to_string().contains("parameter values are incompatible"));
+    assert!(
+        err.to_string()
+            .contains("parameter values are incompatible")
+    );
 }
 
 #[tokio::test]
 async fn test_refresh_query_forbidden_includes_error_body() {
     let mock_server = MockServer::start().await;
 
-    mock_refresh_query_forbidden(123)
-        .mount(&mock_server)
-        .await;
+    mock_refresh_query_forbidden(123).mount(&mock_server).await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let result = client.refresh_query(123, None).await;

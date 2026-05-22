@@ -1,13 +1,13 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::missing_panics_doc)]
 
+use super::OutputFormat;
+use crate::api::RedashClient;
+use crate::models::{Parameter, QueryMetadata};
 use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use crate::api::RedashClient;
-use crate::models::{QueryMetadata, Parameter};
-use super::OutputFormat;
 
 fn parse_parameter_arg(arg: &str) -> Result<(String, serde_json::Value)> {
     let parts: Vec<&str> = arg.splitn(2, '=').collect();
@@ -40,8 +40,8 @@ fn load_query_metadata_by_id(query_id: u64) -> Result<(QueryMetadata, String, St
             && let Ok(id) = id_str.parse::<u64>()
             && id == query_id
         {
-            let yaml_content = fs::read_to_string(&path)
-                .context(format!("Failed to read {}", path.display()))?;
+            let yaml_content =
+                fs::read_to_string(&path).context(format!("Failed to read {}", path.display()))?;
 
             let metadata: QueryMetadata = serde_yaml::from_str(&yaml_content)
                 .context(format!("Failed to parse {}", path.display()))?;
@@ -53,14 +53,16 @@ fn load_query_metadata_by_id(query_id: u64) -> Result<(QueryMetadata, String, St
                 bail!("SQL file not found: {sql_path}");
             }
 
-            let sql = fs::read_to_string(&sql_path)
-                .context(format!("Failed to read {sql_path}"))?;
+            let sql =
+                fs::read_to_string(&sql_path).context(format!("Failed to read {sql_path}"))?;
 
             return Ok((metadata, sql, yaml_path));
         }
     }
 
-    bail!("Query {query_id} not found in queries/ directory. Run 'stmo-cli fetch {query_id}' first.");
+    bail!(
+        "Query {query_id} not found in queries/ directory. Run 'stmo-cli fetch {query_id}' first."
+    );
 }
 
 fn prompt_for_parameter(param: &Parameter) -> Result<serde_json::Value> {
@@ -86,12 +88,14 @@ fn prompt_for_parameter(param: &Parameter) -> Result<serde_json::Value> {
                         .items(&options)
                         .interact()?;
 
-                    let selected: Vec<String> = selections.iter()
-                        .map(|&i| options[i].to_string())
-                        .collect();
+                    let selected: Vec<String> =
+                        selections.iter().map(|&i| options[i].to_string()).collect();
 
                     Ok(serde_json::Value::Array(
-                        selected.into_iter().map(serde_json::Value::String).collect()
+                        selected
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
                     ))
                 } else {
                     let selection = Select::new()
@@ -103,22 +107,16 @@ fn prompt_for_parameter(param: &Parameter) -> Result<serde_json::Value> {
                     Ok(serde_json::Value::String(options[selection].to_string()))
                 }
             } else {
-                let input: String = Input::new()
-                    .with_prompt(title)
-                    .interact_text()?;
+                let input: String = Input::new().with_prompt(title).interact_text()?;
                 Ok(serde_json::Value::String(input))
             }
         }
         "number" => {
-            let input: f64 = Input::new()
-                .with_prompt(title)
-                .interact_text()?;
+            let input: f64 = Input::new().with_prompt(title).interact_text()?;
             Ok(serde_json::json!(input))
         }
         _ => {
-            let input: String = Input::new()
-                .with_prompt(title)
-                .interact_text()?;
+            let input: String = Input::new().with_prompt(title).interact_text()?;
             Ok(serde_json::Value::String(input))
         }
     }
@@ -150,24 +148,38 @@ fn build_parameter_map(
             } else {
                 bail!(
                     "Missing required parameter: '{}' ({}). Use --param {}=value or --interactive",
-                    param.name, param.title, param.name
+                    param.name,
+                    param.title,
+                    param.name
                 );
             }
         }
     }
 
-    Ok(if param_map.is_empty() { None } else { Some(param_map) })
+    Ok(if param_map.is_empty() {
+        None
+    } else {
+        Some(param_map)
+    })
 }
 
-fn format_results_json(result: &crate::models::QueryResult, limit: Option<usize>) -> Result<String> {
+fn format_results_json(
+    result: &crate::models::QueryResult,
+    limit: Option<usize>,
+) -> Result<String> {
     let rows = if let Some(limit) = limit {
-        result.data.rows.iter().take(limit).cloned().collect::<Vec<_>>()
+        result
+            .data
+            .rows
+            .iter()
+            .take(limit)
+            .cloned()
+            .collect::<Vec<_>>()
     } else {
         result.data.rows.clone()
     };
 
-    serde_json::to_string_pretty(&rows)
-        .context("Failed to format results as JSON")
+    serde_json::to_string_pretty(&rows).context("Failed to format results as JSON")
 }
 
 fn format_results_table(result: &crate::models::QueryResult, limit: Option<usize>) -> String {
@@ -182,12 +194,15 @@ fn format_results_table(result: &crate::models::QueryResult, limit: Option<usize
     let _ = writeln!(output);
     let _ = writeln!(output, "{}", "-".repeat(result.data.columns.len() * 21));
 
-    let rows_to_show = limit.unwrap_or(result.data.rows.len()).min(result.data.rows.len());
+    let rows_to_show = limit
+        .unwrap_or(result.data.rows.len())
+        .min(result.data.rows.len());
 
     for row in &result.data.rows[..rows_to_show] {
         if let serde_json::Value::Object(obj) = row {
             for col in &result.data.columns {
-                let value = obj.get(&col.name)
+                let value = obj
+                    .get(&col.name)
                     .map(|v| match v {
                         serde_json::Value::Null => "NULL".to_string(),
                         serde_json::Value::String(s) => s.clone(),
@@ -208,15 +223,21 @@ fn format_results_table(result: &crate::models::QueryResult, limit: Option<usize
     }
 
     if rows_to_show < result.data.rows.len() {
-        let _ = write!(output, "\n... {} more rows (showing {} of {})\n",
+        let _ = write!(
+            output,
+            "\n... {} more rows (showing {} of {})\n",
             result.data.rows.len() - rows_to_show,
             rows_to_show,
             result.data.rows.len()
         );
     }
 
-    let _ = write!(output, "\n✓ {} rows returned in {:.2}s\n",
-        result.data.rows.len(), result.runtime);
+    let _ = write!(
+        output,
+        "\n✓ {} rows returned in {:.2}s\n",
+        result.data.rows.len(),
+        result.runtime
+    );
 
     output
 }
@@ -272,7 +293,7 @@ pub async fn execute(
 #[allow(clippy::missing_errors_doc)]
 mod tests {
     use super::*;
-    use crate::models::{QueryResult, QueryResultData, Column};
+    use crate::models::{Column, QueryResult, QueryResultData};
 
     #[test]
     fn test_parse_parameter_arg_string() {
@@ -299,7 +320,12 @@ mod tests {
     fn test_parse_parameter_arg_invalid() {
         let result = parse_parameter_arg("invalid");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid parameter format"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid parameter format")
+        );
     }
 
     #[test]
@@ -308,8 +334,16 @@ mod tests {
             id: 1,
             data: QueryResultData {
                 columns: vec![
-                    Column { name: "col1".to_string(), type_name: "string".to_string(), friendly_name: None },
-                    Column { name: "col2".to_string(), type_name: "integer".to_string(), friendly_name: None },
+                    Column {
+                        name: "col1".to_string(),
+                        type_name: "string".to_string(),
+                        friendly_name: None,
+                    },
+                    Column {
+                        name: "col2".to_string(),
+                        type_name: "integer".to_string(),
+                        friendly_name: None,
+                    },
                 ],
                 rows: vec![
                     serde_json::json!({"col1": "value1", "col2": 123}),
@@ -334,9 +368,11 @@ mod tests {
         let result = QueryResult {
             id: 1,
             data: QueryResultData {
-                columns: vec![
-                    Column { name: "col1".to_string(), type_name: "string".to_string(), friendly_name: None },
-                ],
+                columns: vec![Column {
+                    name: "col1".to_string(),
+                    type_name: "string".to_string(),
+                    friendly_name: None,
+                }],
                 rows: vec![
                     serde_json::json!({"col1": "row1"}),
                     serde_json::json!({"col1": "row2"}),
@@ -359,8 +395,16 @@ mod tests {
             id: 1,
             data: QueryResultData {
                 columns: vec![
-                    Column { name: "col1".to_string(), type_name: "string".to_string(), friendly_name: None },
-                    Column { name: "col2".to_string(), type_name: "integer".to_string(), friendly_name: None },
+                    Column {
+                        name: "col1".to_string(),
+                        type_name: "string".to_string(),
+                        friendly_name: None,
+                    },
+                    Column {
+                        name: "col2".to_string(),
+                        type_name: "integer".to_string(),
+                        friendly_name: None,
+                    },
                 ],
                 rows: vec![
                     serde_json::json!({"col1": "value1", "col2": 123}),
@@ -385,9 +429,11 @@ mod tests {
         let result = QueryResult {
             id: 1,
             data: QueryResultData {
-                columns: vec![
-                    Column { name: "col1".to_string(), type_name: "string".to_string(), friendly_name: None },
-                ],
+                columns: vec![Column {
+                    name: "col1".to_string(),
+                    type_name: "string".to_string(),
+                    friendly_name: None,
+                }],
                 rows: vec![
                     serde_json::json!({"col1": "row1"}),
                     serde_json::json!({"col1": "row2"}),
@@ -411,9 +457,11 @@ mod tests {
         let result = QueryResult {
             id: 1,
             data: QueryResultData {
-                columns: vec![
-                    Column { name: "col1".to_string(), type_name: "string".to_string(), friendly_name: None },
-                ],
+                columns: vec![Column {
+                    name: "col1".to_string(),
+                    type_name: "string".to_string(),
+                    friendly_name: None,
+                }],
                 rows: vec![
                     serde_json::json!({"col1": "this_is_a_very_long_value_that_should_be_truncated"}),
                 ],
@@ -429,10 +477,22 @@ mod tests {
 
     #[test]
     fn test_output_format_from_str() {
-        assert!(matches!("json".parse::<OutputFormat>().unwrap(), OutputFormat::Json));
-        assert!(matches!("JSON".parse::<OutputFormat>().unwrap(), OutputFormat::Json));
-        assert!(matches!("table".parse::<OutputFormat>().unwrap(), OutputFormat::Table));
-        assert!(matches!("TABLE".parse::<OutputFormat>().unwrap(), OutputFormat::Table));
+        assert!(matches!(
+            "json".parse::<OutputFormat>().unwrap(),
+            OutputFormat::Json
+        ));
+        assert!(matches!(
+            "JSON".parse::<OutputFormat>().unwrap(),
+            OutputFormat::Json
+        ));
+        assert!(matches!(
+            "table".parse::<OutputFormat>().unwrap(),
+            OutputFormat::Table
+        ));
+        assert!(matches!(
+            "TABLE".parse::<OutputFormat>().unwrap(),
+            OutputFormat::Table
+        ));
     }
 
     #[test]

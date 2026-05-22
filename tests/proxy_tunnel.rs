@@ -4,8 +4,7 @@
 /// Skipped when no HTTPS proxy is configured.
 #[tokio::test]
 async fn https_through_connect_proxy() {
-    let Ok(proxy_url) = std::env::var("https_proxy")
-        .or_else(|_| std::env::var("HTTPS_PROXY"))
+    let Ok(proxy_url) = std::env::var("https_proxy").or_else(|_| std::env::var("HTTPS_PROXY"))
     else {
         return;
     };

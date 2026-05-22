@@ -1,7 +1,7 @@
 #![allow(clippy::missing_errors_doc)]
 
-use anyhow::Result;
 use crate::api::RedashClient;
+use anyhow::Result;
 
 pub async fn discover(client: &RedashClient) -> Result<()> {
     println!("Fetching your queries from Redash...\n");

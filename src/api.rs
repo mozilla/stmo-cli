@@ -1,8 +1,11 @@
 #![allow(clippy::missing_errors_doc)]
 
+use crate::models::{
+    CreateDashboard, CreateQuery, CreateWidget, Dashboard, DashboardSummary, DashboardsResponse,
+    DataSource, DataSourceSchema, QueriesResponse, Query,
+};
 use anyhow::{Context, Result};
 use reqwest::{Client, header};
-use crate::models::{CreateDashboard, CreateQuery, CreateWidget, Dashboard, DashboardsResponse, DashboardSummary, DataSource, DataSourceSchema, QueriesResponse, Query};
 
 pub struct RedashClient {
     client: Client,
@@ -23,15 +26,16 @@ impl RedashClient {
             .build()
             .context("Failed to build HTTP client")?;
 
-        Ok(Self {
-            client,
-            base_url,
-        })
+        Ok(Self { client, base_url })
     }
 
     pub async fn list_my_queries(&self, page: u32, page_size: u32) -> Result<QueriesResponse> {
-        let url = format!("{}/api/queries/my?page={page}&page_size={page_size}", self.base_url);
-        let response = self.client
+        let url = format!(
+            "{}/api/queries/my?page={page}&page_size={page_size}",
+            self.base_url
+        );
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -47,7 +51,8 @@ impl RedashClient {
 
     pub async fn get_query(&self, query_id: u64) -> Result<Query> {
         let url = format!("{}/api/queries/{query_id}", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -63,7 +68,8 @@ impl RedashClient {
 
     pub async fn list_data_sources(&self) -> Result<Vec<DataSource>> {
         let url = format!("{}/api/data_sources", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -79,7 +85,8 @@ impl RedashClient {
 
     pub async fn get_data_source(&self, data_source_id: u64) -> Result<DataSource> {
         let url = format!("{}/api/data_sources/{data_source_id}", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -99,16 +106,22 @@ impl RedashClient {
         refresh: bool,
     ) -> Result<DataSourceSchema> {
         let url = if refresh {
-            format!("{}/api/data_sources/{data_source_id}/schema?refresh=true", self.base_url)
+            format!(
+                "{}/api/data_sources/{data_source_id}/schema?refresh=true",
+                self.base_url
+            )
         } else {
             format!("{}/api/data_sources/{data_source_id}/schema", self.base_url)
         };
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
-            .context(format!("Failed to fetch schema for data source {data_source_id}"))?
+            .context(format!(
+                "Failed to fetch schema for data source {data_source_id}"
+            ))?
             .error_for_status()
             .context("API returned error status")?;
 
@@ -120,7 +133,8 @@ impl RedashClient {
 
     pub async fn create_query(&self, create_query: &CreateQuery) -> Result<Query> {
         let url = format!("{}/api/queries", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(create_query)
             .send()
@@ -137,7 +151,8 @@ impl RedashClient {
 
     pub async fn create_or_update_query(&self, query: &Query) -> Result<Query> {
         let url = format!("{}/api/queries/{}", self.base_url, query.id);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(query)
             .send()
@@ -152,14 +167,21 @@ impl RedashClient {
             .context("Failed to parse query update response")
     }
 
-    pub async fn create_visualization(&self, query_id: u64, viz: &crate::models::CreateVisualization) -> Result<crate::models::Visualization> {
+    pub async fn create_visualization(
+        &self,
+        query_id: u64,
+        viz: &crate::models::CreateVisualization,
+    ) -> Result<crate::models::Visualization> {
         let url = format!("{}/api/visualizations", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(viz)
             .send()
             .await
-            .context(format!("Failed to create visualization for query {query_id}"))?
+            .context(format!(
+                "Failed to create visualization for query {query_id}"
+            ))?
             .error_for_status()
             .context("API returned error status")?;
 
@@ -169,9 +191,13 @@ impl RedashClient {
             .context("Failed to parse visualization create response")
     }
 
-    pub async fn update_visualization(&self, viz: &crate::models::Visualization) -> Result<crate::models::Visualization> {
+    pub async fn update_visualization(
+        &self,
+        viz: &crate::models::Visualization,
+    ) -> Result<crate::models::Visualization> {
         let url = format!("{}/api/visualizations/{}", self.base_url, viz.id);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(viz)
             .send()
@@ -199,7 +225,11 @@ impl RedashClient {
             }
 
             all_queries.extend(response.results);
-            eprintln!("Fetched {} / {} queries...", all_queries.len(), response.count);
+            eprintln!(
+                "Fetched {} / {} queries...",
+                all_queries.len(),
+                response.count
+            );
 
             #[allow(clippy::cast_possible_truncation)]
             if all_queries.len() >= response.count as usize {
@@ -224,7 +254,8 @@ impl RedashClient {
             parameters,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request)
             .send()
@@ -233,7 +264,10 @@ impl RedashClient {
 
         let status = response.status();
         if !status.is_success() {
-            let error_body = response.text().await.unwrap_or_else(|_| "Unable to read error response".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unable to read error response".to_string());
             anyhow::bail!("API returned error status {status}: {error_body}");
         }
 
@@ -248,7 +282,8 @@ impl RedashClient {
     pub async fn poll_job(&self, job_id: &str) -> Result<crate::models::Job> {
         let url = format!("{}/api/jobs/{job_id}", self.base_url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -274,11 +309,14 @@ impl RedashClient {
             self.base_url
         );
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
-            .context(format!("Failed to fetch result {result_id} for query {query_id}"))?
+            .context(format!(
+                "Failed to fetch result {result_id} for query {query_id}"
+            ))?
             .error_for_status()
             .context("API returned error status")?;
 
@@ -297,8 +335,8 @@ impl RedashClient {
         timeout_secs: u64,
         poll_interval_ms: u64,
     ) -> Result<crate::models::QueryResult> {
-        use tokio::time::{sleep, Duration};
         use crate::models::JobStatus;
+        use tokio::time::{Duration, sleep};
 
         eprintln!("Executing query {query_id}...");
         let job = self.refresh_query(query_id, parameters).await?;
@@ -317,14 +355,17 @@ impl RedashClient {
 
             match status {
                 JobStatus::Success => {
-                    let result_id = current_job.query_result_id
+                    let result_id = current_job
+                        .query_result_id
                         .context("Job succeeded but no result_id returned")?;
 
                     eprintln!("Query completed, fetching results...");
                     return self.get_query_result(query_id, result_id).await;
                 }
                 JobStatus::Failure => {
-                    let error = current_job.error.unwrap_or_else(|| "Unknown error".to_string());
+                    let error = current_job
+                        .error
+                        .unwrap_or_else(|| "Unknown error".to_string());
                     anyhow::bail!("Query execution failed: {error}");
                 }
                 JobStatus::Cancelled => {
@@ -343,7 +384,8 @@ impl RedashClient {
         let url = format!("{}/api/queries/{query_id}", self.base_url);
         let payload = serde_json::json!({"is_archived": true});
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&payload)
             .send()
@@ -362,7 +404,8 @@ impl RedashClient {
         let url = format!("{}/api/queries/{query_id}", self.base_url);
         let payload = serde_json::json!({"is_archived": false});
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&payload)
             .send()
@@ -379,7 +422,8 @@ impl RedashClient {
 
     pub async fn create_dashboard(&self, dashboard: &CreateDashboard) -> Result<Dashboard> {
         let url = format!("{}/api/dashboards", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(dashboard)
             .send()
@@ -388,7 +432,11 @@ impl RedashClient {
 
         let status = response.status();
         if !status.is_success() {
-            anyhow::bail!("HTTP {}: {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown error"));
+            anyhow::bail!(
+                "HTTP {}: {}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown error")
+            );
         }
 
         response
@@ -397,9 +445,17 @@ impl RedashClient {
             .context("Failed to parse dashboard create response")
     }
 
-    pub async fn list_favorite_dashboards(&self, page: u32, page_size: u32) -> Result<DashboardsResponse> {
-        let url = format!("{}/api/dashboards/favorites?page={page}&page_size={page_size}", self.base_url);
-        let response = self.client
+    pub async fn list_favorite_dashboards(
+        &self,
+        page: u32,
+        page_size: u32,
+    ) -> Result<DashboardsResponse> {
+        let url = format!(
+            "{}/api/dashboards/favorites?page={page}&page_size={page_size}",
+            self.base_url
+        );
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -407,7 +463,11 @@ impl RedashClient {
 
         let status = response.status();
         if !status.is_success() {
-            anyhow::bail!("HTTP {}: {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown error"));
+            anyhow::bail!(
+                "HTTP {}: {}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown error")
+            );
         }
 
         response
@@ -418,7 +478,8 @@ impl RedashClient {
 
     pub async fn get_dashboard(&self, slug_or_id: &str) -> Result<Dashboard> {
         let url = format!("{}/api/dashboards/{slug_or_id}", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -427,7 +488,11 @@ impl RedashClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("HTTP {}: {} — {body}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown error"));
+            anyhow::bail!(
+                "HTTP {}: {} — {body}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown error")
+            );
         }
 
         response
@@ -438,7 +503,8 @@ impl RedashClient {
 
     pub async fn update_dashboard(&self, dashboard: &Dashboard) -> Result<Dashboard> {
         let url = format!("{}/api/dashboards/{}", self.base_url, dashboard.id);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(dashboard)
             .send()
@@ -448,7 +514,11 @@ impl RedashClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("HTTP {}: {} — {body}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown error"));
+            anyhow::bail!(
+                "HTTP {}: {} — {body}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown error")
+            );
         }
 
         response
@@ -460,7 +530,8 @@ impl RedashClient {
     pub async fn archive_dashboard(&self, dashboard_id: u64) -> Result<()> {
         let url = format!("{}/api/dashboards/{dashboard_id}", self.base_url);
         let payload = serde_json::json!({"is_archived": true});
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&payload)
             .send()
@@ -469,7 +540,11 @@ impl RedashClient {
 
         let status = response.status();
         if !status.is_success() {
-            anyhow::bail!("HTTP {}: {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown error"));
+            anyhow::bail!(
+                "HTTP {}: {}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown error")
+            );
         }
 
         Ok(())
@@ -479,7 +554,8 @@ impl RedashClient {
         let url = format!("{}/api/dashboards/{dashboard_id}", self.base_url);
         let payload = serde_json::json!({"is_archived": false});
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&payload)
             .send()
@@ -488,7 +564,11 @@ impl RedashClient {
 
         let status = response.status();
         if !status.is_success() {
-            anyhow::bail!("HTTP {}: {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown error"));
+            anyhow::bail!(
+                "HTTP {}: {}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown error")
+            );
         }
 
         response
@@ -499,7 +579,8 @@ impl RedashClient {
 
     pub async fn create_widget(&self, widget: &CreateWidget) -> Result<crate::models::Widget> {
         let url = format!("{}/api/widgets", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(widget)
             .send()
@@ -509,7 +590,11 @@ impl RedashClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("HTTP {}: {} — {body}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown error"));
+            anyhow::bail!(
+                "HTTP {}: {} — {body}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown error")
+            );
         }
 
         response
@@ -518,9 +603,14 @@ impl RedashClient {
             .context("Failed to parse widget create response")
     }
 
-    pub async fn update_widget(&self, widget_id: u64, widget: &CreateWidget) -> Result<crate::models::Widget> {
+    pub async fn update_widget(
+        &self,
+        widget_id: u64,
+        widget: &CreateWidget,
+    ) -> Result<crate::models::Widget> {
         let url = format!("{}/api/widgets/{widget_id}", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(widget)
             .send()
@@ -530,7 +620,11 @@ impl RedashClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("HTTP {}: {} — {body}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown error"));
+            anyhow::bail!(
+                "HTTP {}: {} — {body}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown error")
+            );
         }
 
         response
@@ -541,7 +635,8 @@ impl RedashClient {
 
     pub async fn delete_widget(&self, widget_id: u64) -> Result<()> {
         let url = format!("{}/api/widgets/{widget_id}", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .delete(&url)
             .send()
             .await
@@ -549,7 +644,11 @@ impl RedashClient {
 
         let status = response.status();
         if !status.is_success() {
-            anyhow::bail!("HTTP {}: {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown error"));
+            anyhow::bail!(
+                "HTTP {}: {}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown error")
+            );
         }
 
         Ok(())
@@ -557,7 +656,8 @@ impl RedashClient {
 
     pub async fn favorite_dashboard(&self, slug: &str) -> Result<()> {
         let url = format!("{}/api/dashboards/{slug}/favorite", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&serde_json::json!({}))
             .send()
@@ -566,7 +666,11 @@ impl RedashClient {
 
         let status = response.status();
         if !status.is_success() {
-            anyhow::bail!("HTTP {}: {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown error"));
+            anyhow::bail!(
+                "HTTP {}: {}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown error")
+            );
         }
 
         Ok(())
@@ -585,7 +689,11 @@ impl RedashClient {
             }
 
             all_dashboards.extend(response.results);
-            eprintln!("Fetched {} / {} dashboards...", all_dashboards.len(), response.count);
+            eprintln!(
+                "Fetched {} / {} dashboards...",
+                all_dashboards.len(),
+                response.count
+            );
 
             #[allow(clippy::cast_possible_truncation)]
             if all_dashboards.len() >= response.count as usize {

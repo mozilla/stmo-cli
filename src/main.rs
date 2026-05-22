@@ -3,8 +3,8 @@ mod commands;
 mod models;
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
 use api::RedashClient;
+use clap::{Parser, Subcommand};
 use moz_cli_version_check::VersionChecker;
 
 #[derive(Parser)]
@@ -27,7 +27,10 @@ enum Commands {
     Fetch {
         #[arg(help = "Query IDs to fetch (e.g., 123 456 789)")]
         query_ids: Vec<u64>,
-        #[arg(long, help = "Fetch all queries currently tracked in queries/ directory")]
+        #[arg(
+            long,
+            help = "Fetch all queries currently tracked in queries/ directory"
+        )]
         all: bool,
     },
 
@@ -44,13 +47,25 @@ enum Commands {
         #[arg(help = "Query ID to execute (must be fetched locally first)")]
         query_id: u64,
 
-        #[arg(long, help = "Query parameter in format: name=value (can be used multiple times)")]
+        #[arg(
+            long,
+            help = "Query parameter in format: name=value (can be used multiple times)"
+        )]
         param: Vec<String>,
 
-        #[arg(long, short = 'f', default_value = "json", help = "Output format: json or table")]
+        #[arg(
+            long,
+            short = 'f',
+            default_value = "json",
+            help = "Output format: json or table"
+        )]
         format: String,
 
-        #[arg(long, short = 'i', help = "Prompt for missing parameters interactively")]
+        #[arg(
+            long,
+            short = 'i',
+            help = "Prompt for missing parameters interactively"
+        )]
         interactive: bool,
 
         #[arg(long, default_value = "300", help = "Timeout in seconds")]
@@ -68,10 +83,18 @@ enum Commands {
         #[arg(long, help = "Show table schema for the data source")]
         schema: bool,
 
-        #[arg(long, help = "Force refresh schema from data source (slower but always up-to-date)")]
+        #[arg(
+            long,
+            help = "Force refresh schema from data source (slower but always up-to-date)"
+        )]
         refresh: bool,
 
-        #[arg(long, short = 'f', default_value = "json", help = "Output format: json or table")]
+        #[arg(
+            long,
+            short = 'f',
+            default_value = "json",
+            help = "Output format: json or table"
+        )]
         format: String,
     },
 
@@ -80,7 +103,10 @@ enum Commands {
         #[arg(help = "Query IDs to archive (e.g., 123 456 789)")]
         query_ids: Vec<u64>,
 
-        #[arg(long, help = "Remove local files for queries already archived in Redash")]
+        #[arg(
+            long,
+            help = "Remove local files for queries already archived in Redash"
+        )]
         cleanup: bool,
     },
 
@@ -107,13 +133,17 @@ enum DashboardCommands {
 
     #[command(about = "Fetch dashboards from Redash")]
     Fetch {
-        #[arg(help = "Dashboard slugs to fetch (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)")]
+        #[arg(
+            help = "Dashboard slugs to fetch (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)"
+        )]
         slugs: Vec<String>,
     },
 
     #[command(about = "Deploy dashboard changes to Redash")]
     Deploy {
-        #[arg(help = "Dashboard slugs to deploy (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)")]
+        #[arg(
+            help = "Dashboard slugs to deploy (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)"
+        )]
         slugs: Vec<String>,
         #[arg(long, help = "Deploy all tracked dashboards")]
         all: bool,
@@ -121,13 +151,17 @@ enum DashboardCommands {
 
     #[command(about = "Archive dashboards in Redash and remove local files")]
     Archive {
-        #[arg(help = "Dashboard slugs to archive (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)")]
+        #[arg(
+            help = "Dashboard slugs to archive (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)"
+        )]
         slugs: Vec<String>,
     },
 
     #[command(about = "Restore archived dashboards")]
     Unarchive {
-        #[arg(help = "Dashboard slugs to unarchive (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)")]
+        #[arg(
+            help = "Dashboard slugs to unarchive (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)"
+        )]
         slugs: Vec<String>,
     },
 }
@@ -162,8 +196,8 @@ async fn main() -> Result<()> {
         return result;
     }
 
-    let api_key = std::env::var("REDASH_API_KEY")
-        .context("REDASH_API_KEY environment variable not set")?;
+    let api_key =
+        std::env::var("REDASH_API_KEY").context("REDASH_API_KEY environment variable not set")?;
 
     let base_url = std::env::var("REDASH_URL")
         .unwrap_or_else(|_| "https://sql.telemetry.mozilla.org".to_string());
@@ -173,10 +207,22 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Discover => commands::discover::discover(&client).await?,
         Commands::Init => unreachable!("Init handled above"),
-        Commands::Fetch { query_ids, all } => commands::fetch::fetch(&client, query_ids, all).await?,
-        Commands::Deploy { query_ids, all } => commands::deploy::deploy(&client, query_ids, all).await?,
-        Commands::Execute { query_id, param, format, interactive, timeout, limit } => {
-            let output_format = format.parse::<commands::OutputFormat>()
+        Commands::Fetch { query_ids, all } => {
+            commands::fetch::fetch(&client, query_ids, all).await?
+        }
+        Commands::Deploy { query_ids, all } => {
+            commands::deploy::deploy(&client, query_ids, all).await?
+        }
+        Commands::Execute {
+            query_id,
+            param,
+            format,
+            interactive,
+            timeout,
+            limit,
+        } => {
+            let output_format = format
+                .parse::<commands::OutputFormat>()
                 .context("Invalid output format")?;
             let limit_rows = limit;
             commands::execute::execute(
@@ -187,14 +233,28 @@ async fn main() -> Result<()> {
                 interactive,
                 timeout,
                 limit_rows,
-            ).await?;
+            )
+            .await?;
         }
-        Commands::DataSources { data_source_id, schema, refresh, format } => {
-            let output_format = format.parse::<commands::OutputFormat>()
+        Commands::DataSources {
+            data_source_id,
+            schema,
+            refresh,
+            format,
+        } => {
+            let output_format = format
+                .parse::<commands::OutputFormat>()
                 .context("Invalid output format")?;
 
             if let Some(id) = data_source_id {
-                commands::datasources::show_data_source(&client, id, schema, refresh, output_format).await?;
+                commands::datasources::show_data_source(
+                    &client,
+                    id,
+                    schema,
+                    refresh,
+                    output_format,
+                )
+                .await?;
             } else {
                 commands::datasources::list_data_sources(&client, output_format).await?;
             }
@@ -205,21 +265,33 @@ async fn main() -> Result<()> {
             } else if !query_ids.is_empty() {
                 commands::archive::archive(&client, query_ids).await?;
             } else {
-                anyhow::bail!("No query IDs specified. Use specific query IDs or --cleanup flag.\n\nExamples:\n  stmo-cli archive 123 456\n  stmo-cli archive --cleanup");
+                anyhow::bail!(
+                    "No query IDs specified. Use specific query IDs or --cleanup flag.\n\nExamples:\n  stmo-cli archive 123 456\n  stmo-cli archive --cleanup"
+                );
             }
         }
         Commands::Unarchive { query_ids } => {
             if query_ids.is_empty() {
-                anyhow::bail!("No query IDs specified. Provide query IDs to unarchive.\n\nExample:\n  stmo-cli unarchive 123 456");
+                anyhow::bail!(
+                    "No query IDs specified. Provide query IDs to unarchive.\n\nExample:\n  stmo-cli unarchive 123 456"
+                );
             }
             commands::archive::unarchive(&client, query_ids).await?;
         }
         Commands::Dashboards { command } => match command {
             DashboardCommands::Discover => commands::dashboards::discover(&client).await?,
-            DashboardCommands::Fetch { slugs } => commands::dashboards::fetch(&client, slugs.clone()).await?,
-            DashboardCommands::Deploy { slugs, all } => commands::dashboards::deploy(&client, slugs.clone(), all).await?,
-            DashboardCommands::Archive { slugs } => commands::dashboards::archive(&client, slugs.clone()).await?,
-            DashboardCommands::Unarchive { slugs } => commands::dashboards::unarchive(&client, slugs.clone()).await?,
+            DashboardCommands::Fetch { slugs } => {
+                commands::dashboards::fetch(&client, slugs.clone()).await?
+            }
+            DashboardCommands::Deploy { slugs, all } => {
+                commands::dashboards::deploy(&client, slugs.clone(), all).await?
+            }
+            DashboardCommands::Archive { slugs } => {
+                commands::dashboards::archive(&client, slugs.clone()).await?
+            }
+            DashboardCommands::Unarchive { slugs } => {
+                commands::dashboards::unarchive(&client, slugs.clone()).await?
+            }
         },
         Commands::Update => unreachable!("Update handled above"),
     }

@@ -1,12 +1,12 @@
 #![allow(clippy::missing_errors_doc)]
 
-use anyhow::{bail, Context, Result};
+use crate::api::RedashClient;
+use crate::models::Query;
+use anyhow::{Context, Result, bail};
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::collections::HashSet;
-use crate::api::RedashClient;
-use crate::models::Query;
 
 fn slugify(s: &str) -> String {
     s.to_lowercase()
@@ -86,8 +86,8 @@ fn get_all_query_metadata() -> Result<Vec<(u64, String)>> {
         let path = entry.path();
 
         if path.extension().is_some_and(|ext| ext == "yaml") {
-            let metadata_content = fs::read_to_string(&path)
-                .context(format!("Failed to read {}", path.display()))?;
+            let metadata_content =
+                fs::read_to_string(&path).context(format!("Failed to read {}", path.display()))?;
 
             let metadata: crate::models::QueryMetadata = serde_yaml::from_str(&metadata_content)
                 .context(format!("Failed to parse {}", path.display()))?;
@@ -134,7 +134,10 @@ async fn deploy_visualizations(
                     description: viz.description.clone(),
                 };
                 client.update_visualization(&viz_to_update).await?;
-                println!("    ✓ Updated visualization: {} (ID: {})", viz_to_update.name, server_viz.id);
+                println!(
+                    "    ✓ Updated visualization: {} (ID: {})",
+                    viz_to_update.name, server_viz.id
+                );
             } else {
                 let viz_to_create = crate::models::CreateVisualization {
                     query_id,
@@ -143,8 +146,13 @@ async fn deploy_visualizations(
                     options: viz.options.clone(),
                     description: viz.description.clone(),
                 };
-                let created = client.create_visualization(query_id, &viz_to_create).await?;
-                println!("    ✓ Created visualization: {} (ID: {})", created.name, created.id);
+                let created = client
+                    .create_visualization(query_id, &viz_to_create)
+                    .await?;
+                println!(
+                    "    ✓ Created visualization: {} (ID: {})",
+                    created.name, created.id
+                );
             }
         }
     }
@@ -215,11 +223,10 @@ pub async fn deploy(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Re
             bail!("Query metadata file not found: {yaml_path}");
         }
 
-        let sql = fs::read_to_string(&sql_path)
-            .context(format!("Failed to read {sql_path}"))?;
+        let sql = fs::read_to_string(&sql_path).context(format!("Failed to read {sql_path}"))?;
 
-        let metadata_content = fs::read_to_string(&yaml_path)
-            .context(format!("Failed to read {yaml_path}"))?;
+        let metadata_content =
+            fs::read_to_string(&yaml_path).context(format!("Failed to read {yaml_path}"))?;
 
         let metadata: crate::models::QueryMetadata = serde_yaml::from_str(&metadata_content)
             .context(format!("Failed to parse {yaml_path}"))?;
@@ -265,10 +272,8 @@ pub async fn deploy(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Re
                 .context("Failed to serialize query metadata")?;
             fs::write(format!("{new_base}.yaml"), yaml_content)
                 .context(format!("Failed to write {new_base}.yaml"))?;
-            fs::remove_file(&sql_path)
-                .context(format!("Failed to delete {sql_path}"))?;
-            fs::remove_file(&yaml_path)
-                .context(format!("Failed to delete {yaml_path}"))?;
+            fs::remove_file(&sql_path).context(format!("Failed to delete {sql_path}"))?;
+            fs::remove_file(&yaml_path).context(format!("Failed to delete {yaml_path}"))?;
             println!("  ✓ Created new query: {} - {name}", fetched.id);
             println!("    Renamed: 0-{slug}.* → {}-{new_slug}.*", fetched.id);
             fetched
@@ -310,13 +315,18 @@ pub async fn deploy(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Re
             };
             let yaml_content = serde_yaml::to_string(&updated_metadata)
                 .context("Failed to serialize query metadata")?;
-            fs::write(&yaml_path, yaml_content)
-                .context(format!("Failed to write {yaml_path}"))?;
+            fs::write(&yaml_path, yaml_content).context(format!("Failed to write {yaml_path}"))?;
             println!("  ✓ {id} - {name}");
             result
         };
 
-        deploy_visualizations(client, result_query.id, &metadata.visualizations, &result_query.visualizations).await?;
+        deploy_visualizations(
+            client,
+            result_query.id,
+            &metadata.visualizations,
+            &result_query.visualizations,
+        )
+        .await?;
     }
 
     println!("\n✓ All resources deployed successfully");

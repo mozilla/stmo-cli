@@ -40,10 +40,8 @@ fn find_query_files(query_id: u64) -> Result<Option<(String, String)>> {
 }
 
 fn delete_query_files(sql_path: &str, yaml_path: &str) -> Result<()> {
-    fs::remove_file(sql_path)
-        .context(format!("Failed to delete {sql_path}"))?;
-    fs::remove_file(yaml_path)
-        .context(format!("Failed to delete {yaml_path}"))?;
+    fs::remove_file(sql_path).context(format!("Failed to delete {sql_path}"))?;
+    fs::remove_file(yaml_path).context(format!("Failed to delete {yaml_path}"))?;
     Ok(())
 }
 
@@ -117,7 +115,10 @@ pub async fn cleanup(client: &RedashClient) -> Result<()> {
         return Ok(());
     }
 
-    println!("Checking {} queries for archive status...\n", query_ids.len());
+    println!(
+        "Checking {} queries for archive status...\n",
+        query_ids.len()
+    );
 
     let mut cleaned_count = 0;
     let mut errors = Vec::new();
@@ -182,7 +183,10 @@ pub async fn unarchive(client: &RedashClient, query_ids: Vec<u64>) -> Result<()>
         }
     }
 
-    println!("\n✓ Unarchived {unarchived_count}/{} queries", query_ids.len());
+    println!(
+        "\n✓ Unarchived {unarchived_count}/{} queries",
+        query_ids.len()
+    );
 
     if !errors.is_empty() {
         anyhow::bail!("Failed to unarchive {} queries", errors.len());

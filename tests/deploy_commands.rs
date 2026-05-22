@@ -3,12 +3,12 @@
 
 mod common;
 
-use stmo_cli::api::RedashClient;
 use common::*;
-use tempfile::TempDir;
 use std::env;
-use tokio::sync::Mutex;
 use std::sync::OnceLock;
+use stmo_cli::api::RedashClient;
+use tempfile::TempDir;
+use tokio::sync::Mutex;
 
 static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -86,7 +86,10 @@ async fn test_deploy_new_query_with_id_zero() {
     );
 
     let yaml_content = std::fs::read_to_string("queries/42-test-query.yaml").unwrap();
-    assert!(yaml_content.contains("id: 42"), "YAML should contain the new ID");
+    assert!(
+        yaml_content.contains("id: 42"),
+        "YAML should contain the new ID"
+    );
 }
 
 #[tokio::test]

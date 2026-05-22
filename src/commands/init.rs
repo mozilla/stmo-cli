@@ -54,8 +54,7 @@ fn write_if_missing(target_dir: &Path, file: &ScaffoldFile) -> Result<bool> {
         Ok(false)
     } else {
         let path = file.path;
-        fs::write(&file_path, file.content)
-            .with_context(|| format!("Failed to write {path}"))?;
+        fs::write(&file_path, file.content).with_context(|| format!("Failed to write {path}"))?;
         let description = file.description;
         println!("  ✓ {path} ({description})");
         Ok(true)
@@ -165,7 +164,11 @@ fn setup_git_repo(target_dir: &Path, files_created: bool) -> Result<()> {
         }
 
         let commit_output = Command::new("git")
-            .args(["commit", "-m", "Initial commit: scaffold query/dashboard repository"])
+            .args([
+                "commit",
+                "-m",
+                "Initial commit: scaffold query/dashboard repository",
+            ])
             .current_dir(target_dir)
             .output()
             .context("Failed to run git commit")?;
@@ -299,13 +302,25 @@ pub fn init() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     fn setup_test_repo(dir: &std::path::Path) {
-        Command::new("git").arg("init").current_dir(dir).status().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(dir).status().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test"]).current_dir(dir).status().unwrap();
+        Command::new("git")
+            .arg("init")
+            .current_dir(dir)
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(dir)
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test"])
+            .current_dir(dir)
+            .status()
+            .unwrap();
     }
 
     #[test]
@@ -321,7 +336,8 @@ mod tests {
         assert!(temp_dir.path().join("queries/.gitkeep").exists());
         assert!(temp_dir.path().join("dashboards/.gitkeep").exists());
 
-        let pre_commit_content = fs::read_to_string(temp_dir.path().join(".pre-commit-config.yaml")).unwrap();
+        let pre_commit_content =
+            fs::read_to_string(temp_dir.path().join(".pre-commit-config.yaml")).unwrap();
         assert!(pre_commit_content.contains("yamllint"));
         assert!(pre_commit_content.contains("sqlfluff"));
 

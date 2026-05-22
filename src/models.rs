@@ -148,7 +148,11 @@ pub struct QueriesResponse {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VisualizationMetadata {
-    #[serde(default, deserialize_with = "deserialize_viz_id", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_viz_id",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub id: Option<u64>,
     pub name: String,
     #[serde(rename = "type")]
@@ -354,7 +358,11 @@ pub struct VisualizationQuery {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WidgetOptions {
     pub position: WidgetPosition,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "parameterMappings")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "parameterMappings"
+    )]
     pub parameter_mappings: Option<serde_json::Value>,
 }
 
@@ -428,13 +436,16 @@ pub struct CreateWidget {
 pub fn build_dashboard_level_parameter_mappings(parameters: &[Parameter]) -> serde_json::Value {
     let mut mappings = serde_json::Map::new();
     for param in parameters {
-        mappings.insert(param.name.clone(), serde_json::json!({
-            "mapTo": param.name,
-            "name": param.name,
-            "title": "",
-            "type": "dashboard-level",
-            "value": null,
-        }));
+        mappings.insert(
+            param.name.clone(),
+            serde_json::json!({
+                "mapTo": param.name,
+                "name": param.name,
+                "title": "",
+                "type": "dashboard-level",
+                "value": null,
+            }),
+        );
     }
     serde_json::Value::Object(mappings)
 }
@@ -451,7 +462,10 @@ mod tests {
         assert!(matches!(JobStatus::from_u8(2).unwrap(), JobStatus::Started));
         assert!(matches!(JobStatus::from_u8(3).unwrap(), JobStatus::Success));
         assert!(matches!(JobStatus::from_u8(4).unwrap(), JobStatus::Failure));
-        assert!(matches!(JobStatus::from_u8(5).unwrap(), JobStatus::Cancelled));
+        assert!(matches!(
+            JobStatus::from_u8(5).unwrap(),
+            JobStatus::Cancelled
+        ));
     }
 
     #[test]
