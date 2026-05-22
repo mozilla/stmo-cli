@@ -106,3 +106,24 @@ if !status.is_success() {
 3. **Verify filter/mutation support** - A field in responses doesn't mean you can filter by it or set it via API. Test POST/query params explicitly.
 
 4. **STMO may differ from upstream** - Mozilla's instance may have endpoints disabled or behave differently than Redash documentation suggests.
+
+## Releasing
+
+### Changelog
+
+Only include user-facing changes. Internal changes (test fixes, code formatting, dependency
+updates, CI improvements) should be omitted unless they affect user-visible behavior.
+Group entries under `### Features` and `### Fixes`.
+
+### Steps
+
+1. Update `CHANGELOG.md` with a new version section
+2. Bump `version` in `Cargo.toml`
+3. Commit as `Release X.Y.Z`
+4. Push to main: `git push origin main`
+5. Create signed tag: `git tag -s X.Y.Z -m "X.Y.Z"` (tag message is the bare version)
+6. Push tag: `git push origin X.Y.Z`
+7. Wait for release workflow to create GitHub Release with binaries
+8. Add changelog to release: `gh release edit X.Y.Z --notes "..."`
+9. Publish to crates.io: `cargo publish`
+10. Verify: `cargo binstall --dry-run stmo-cli`
