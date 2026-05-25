@@ -79,7 +79,7 @@ fn create_directory_with_gitkeep(target_dir: &Path, dir_name: &str) -> Result<bo
 }
 
 fn git_available() -> bool {
-    Command::new("git")
+    clean_git_cmd()
         .arg("--version")
         .output()
         .is_ok_and(|output| output.status.success())
@@ -92,15 +92,26 @@ fn precommit_available() -> bool {
         .is_ok_and(|output| output.status.success())
 }
 
+// Returns a git Command with inherited git env vars cleared, so commands run in
+// a fresh directory are not affected by a parent worktree's GIT_DIR or GIT_INDEX_FILE.
+fn clean_git_cmd() -> Command {
+    let mut cmd = Command::new("git");
+    cmd.env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_INDEX_FILE");
+    cmd
+}
+
 fn ensure_git_identity(target_dir: &Path) -> Result<()> {
-    let name_configured = Command::new("git")
+    let name_configured = clean_git_cmd()
         .args(["config", "user.name"])
         .current_dir(target_dir)
         .output()
         .is_ok_and(|o| o.status.success() && !o.stdout.trim_ascii().is_empty());
 
     if !name_configured {
-        let set_name = Command::new("git")
+        let set_name = clean_git_cmd()
             .args(["config", "user.name", "stmo-cli"])
             .current_dir(target_dir)
             .status()
@@ -109,7 +120,7 @@ fn ensure_git_identity(target_dir: &Path) -> Result<()> {
             anyhow::bail!("git config user.name failed");
         }
 
-        let set_email = Command::new("git")
+        let set_email = clean_git_cmd()
             .args(["config", "user.email", "stmo-cli@noreply"])
             .current_dir(target_dir)
             .status()
@@ -132,12 +143,47 @@ fn detect_os() -> &'static str {
     }
 }
 
+fn try_precommit_autoupdate(target_dir: &Path) -> bool {
+    if !precommit_available() {
+        return false;
+    }
+    let output = Command::new("pre-commit")
+        .arg("autoupdate")
+        .current_dir(target_dir)
+        .output();
+    match output {
+        Ok(o) if o.status.success() => {
+            println!("  ✓ Updated hook versions in .pre-commit-config.yaml");
+            true
+        }
+        _ => {
+            println!("  ⚠ pre-commit autoupdate failed, using template versions");
+            false
+        }
+    }
+}
+
+fn install_precommit_hooks(target_dir: &Path) -> Result<()> {
+    let install_output = Command::new("pre-commit")
+        .arg("install")
+        .current_dir(target_dir)
+        .output()
+        .context("Failed to run pre-commit install")?;
+
+    if !install_output.status.success() {
+        let stderr = String::from_utf8_lossy(&install_output.stderr);
+        anyhow::bail!("pre-commit install failed: {stderr}");
+    }
+    println!("  ✓ Installed pre-commit git hooks");
+    Ok(())
+}
+
 fn setup_git_repo(target_dir: &Path, files_created: bool) -> Result<()> {
     let git_dir = target_dir.join(".git");
 
     if !git_dir.exists() {
         println!("\n⚙ Initializing git repository...");
-        let status = Command::new("git")
+        let status = clean_git_cmd()
             .arg("init")
             .current_dir(target_dir)
             .status()
@@ -153,7 +199,7 @@ fn setup_git_repo(target_dir: &Path, files_created: bool) -> Result<()> {
     if files_created {
         println!("⚙ Creating initial commit...");
 
-        let add_status = Command::new("git")
+        let add_status = clean_git_cmd()
             .args(["add", "."])
             .current_dir(target_dir)
             .status()
@@ -163,7 +209,7 @@ fn setup_git_repo(target_dir: &Path, files_created: bool) -> Result<()> {
             anyhow::bail!("git add failed");
         }
 
-        let commit_output = Command::new("git")
+        let commit_output = clean_git_cmd()
             .args([
                 "commit",
                 "-m",
@@ -182,58 +228,6 @@ fn setup_git_repo(target_dir: &Path, files_created: bool) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn setup_precommit(target_dir: &Path) -> Result<bool> {
-    if !precommit_available() {
-        println!("\n⚠ pre-commit is not installed");
-        match detect_os() {
-            "macos" => println!("  Install with: brew install pre-commit"),
-            _ => println!("  Install with: pip install pre-commit"),
-        }
-        println!("  After installing, re-run 'stmo-cli init' to finish setup.");
-        return Ok(false);
-    }
-
-    println!("\n⚙ Setting up pre-commit...");
-
-    let autoupdate_output = Command::new("pre-commit")
-        .arg("autoupdate")
-        .current_dir(target_dir)
-        .output()
-        .context("Failed to run pre-commit autoupdate")?;
-
-    if !autoupdate_output.status.success() {
-        let stderr = String::from_utf8_lossy(&autoupdate_output.stderr);
-        anyhow::bail!("pre-commit autoupdate failed: {stderr}");
-    }
-    println!("  ✓ Updated hook versions in .pre-commit-config.yaml");
-
-    let install_output = Command::new("pre-commit")
-        .arg("install")
-        .current_dir(target_dir)
-        .output()
-        .context("Failed to run pre-commit install")?;
-
-    if !install_output.status.success() {
-        let stderr = String::from_utf8_lossy(&install_output.stderr);
-        anyhow::bail!("pre-commit install failed: {stderr}");
-    }
-    println!("  ✓ Installed pre-commit git hooks");
-
-    let amend_output = Command::new("git")
-        .args(["commit", "--amend", "--no-edit", "-a"])
-        .current_dir(target_dir)
-        .output()
-        .context("Failed to amend commit")?;
-
-    if !amend_output.status.success() {
-        let stderr = String::from_utf8_lossy(&amend_output.stderr);
-        anyhow::bail!("git commit --amend failed: {stderr}");
-    }
-    println!("  ✓ Updated initial commit with resolved hook versions");
-
-    Ok(true)
 }
 
 fn init_in(target_dir: &Path) -> Result<bool> {
@@ -270,6 +264,10 @@ fn init_in(target_dir: &Path) -> Result<bool> {
     }
 
     if git_available() {
+        if precommit_available() {
+            println!("\n⚙ Setting up pre-commit...");
+            try_precommit_autoupdate(target_dir);
+        }
         setup_git_repo(target_dir, files_created > 0)?;
     } else {
         println!("\n⚠ git is not installed - files created but not committed");
@@ -284,7 +282,17 @@ pub fn init() -> Result<()> {
     let files_created = init_in(target_dir)?;
 
     if files_created && git_available() {
-        setup_precommit(target_dir)?;
+        if precommit_available() {
+            println!("\n⚙ Installing pre-commit hooks...");
+            install_precommit_hooks(target_dir)?;
+        } else {
+            println!("\n⚠ pre-commit is not installed");
+            match detect_os() {
+                "macos" => println!("  Install with: brew install pre-commit"),
+                _ => println!("  Install with: pip install pre-commit"),
+            }
+            println!("  After installing, re-run 'stmo-cli init' to finish setup.");
+        }
     }
 
     if files_created {
@@ -305,20 +313,20 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    fn clean_git(dir: &std::path::Path) -> Command {
+        let mut cmd = clean_git_cmd();
+        cmd.current_dir(dir);
+        cmd
+    }
+
     fn setup_test_repo(dir: &std::path::Path) {
-        Command::new("git")
-            .arg("init")
-            .current_dir(dir)
-            .status()
-            .unwrap();
-        Command::new("git")
+        clean_git(dir).arg("init").status().unwrap();
+        clean_git(dir)
             .args(["config", "user.name", "Test"])
-            .current_dir(dir)
             .status()
             .unwrap();
-        Command::new("git")
+        clean_git(dir)
             .args(["config", "user.email", "test@test"])
-            .current_dir(dir)
             .status()
             .unwrap();
     }
@@ -378,9 +386,8 @@ mod tests {
 
         assert!(temp_dir.path().join(".git").exists());
 
-        let log_output = Command::new("git")
+        let log_output = clean_git(temp_dir.path())
             .args(["log", "--oneline"])
-            .current_dir(temp_dir.path())
             .output()
             .unwrap();
 
@@ -399,22 +406,19 @@ mod tests {
         setup_test_repo(temp_dir.path());
 
         fs::write(temp_dir.path().join("existing.txt"), "test").unwrap();
-        Command::new("git")
+        clean_git(temp_dir.path())
             .args(["add", "."])
-            .current_dir(temp_dir.path())
             .status()
             .unwrap();
-        Command::new("git")
+        clean_git(temp_dir.path())
             .args(["commit", "-m", "First commit"])
-            .current_dir(temp_dir.path())
             .status()
             .unwrap();
 
         init_in(temp_dir.path()).unwrap();
 
-        let log_output = Command::new("git")
+        let log_output = clean_git(temp_dir.path())
             .args(["log", "--oneline"])
-            .current_dir(temp_dir.path())
             .output()
             .unwrap();
 
@@ -440,28 +444,48 @@ mod tests {
         fs::write(temp_dir.path().join("dashboards/.gitkeep"), "").unwrap();
 
         setup_test_repo(temp_dir.path());
-        Command::new("git")
+        clean_git(temp_dir.path())
             .args(["add", "."])
-            .current_dir(temp_dir.path())
             .status()
             .unwrap();
-        Command::new("git")
+        clean_git(temp_dir.path())
             .args(["commit", "-m", "Existing commit"])
-            .current_dir(temp_dir.path())
             .status()
             .unwrap();
 
         init_in(temp_dir.path()).unwrap();
 
-        let log_output = Command::new("git")
+        let log_output = clean_git(temp_dir.path())
             .args(["log", "--oneline"])
-            .current_dir(temp_dir.path())
             .output()
             .unwrap();
 
         let log = String::from_utf8_lossy(&log_output.stdout);
         let commit_count = log.lines().count();
         assert_eq!(commit_count, 1);
+    }
+
+    #[test]
+    fn test_init_produces_single_commit() {
+        let temp_dir = TempDir::new().unwrap();
+
+        if !git_available() {
+            return;
+        }
+
+        init_in(temp_dir.path()).unwrap();
+
+        let log_output = clean_git(temp_dir.path())
+            .args(["log", "--oneline"])
+            .output()
+            .unwrap();
+
+        let log = String::from_utf8_lossy(&log_output.stdout);
+        let commit_count = log.lines().count();
+        assert_eq!(
+            commit_count, 1,
+            "init should create exactly one commit, not an amend"
+        );
     }
 
     #[test]
