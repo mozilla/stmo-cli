@@ -7,6 +7,7 @@ use crate::models::{Parameter, QueryMetadata};
 use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::Path;
 
 fn parse_parameter_arg(arg: &str) -> Result<(String, serde_json::Value)> {
@@ -153,12 +154,24 @@ fn build_parameter_map(
         param_map.insert(name.clone(), coerced);
     }
 
+    let has_tty = std::io::stdin().is_terminal();
+
     for param in &metadata.options.parameters {
         if !param_map.contains_key(&param.name) {
-            if interactive {
+            if interactive && has_tty {
                 eprintln!("\nParameter '{}' required:", param.title);
                 let value = prompt_for_parameter(param)?;
                 param_map.insert(param.name.clone(), value);
+            } else if interactive && !has_tty {
+                if let Some(default_value) = &param.value {
+                    param_map.insert(param.name.clone(), default_value.clone());
+                } else {
+                    bail!(
+                        "No TTY available for interactive prompt. \
+                         Supply parameter explicitly: --param {}=<value>",
+                        param.name
+                    );
+                }
             } else if let Some(default_value) = &param.value {
                 param_map.insert(param.name.clone(), default_value.clone());
             } else {
@@ -542,21 +555,21 @@ mod tests {
         assert_eq!(result, serde_json::json!(42));
     }
 
-    #[test]
-    fn test_build_parameter_map_coerces_text_param() {
-        let metadata = crate::models::QueryMetadata {
+    fn make_metadata_with_param(name: &str, default: Option<serde_json::Value>) -> QueryMetadata {
+        use crate::models::{Parameter, QueryOptions};
+        QueryMetadata {
             id: 1,
-            name: "Test".to_string(),
+            name: "test".to_string(),
             description: None,
-            data_source_id: 25,
+            data_source_id: 1,
             user_id: None,
             schedule: None,
-            options: crate::models::QueryOptions {
-                parameters: vec![crate::models::Parameter {
-                    name: "days".to_string(),
-                    title: "days".to_string(),
+            options: QueryOptions {
+                parameters: vec![Parameter {
+                    name: name.to_string(),
+                    title: name.to_string(),
                     param_type: "text".to_string(),
-                    value: None,
+                    value: default,
                     enum_options: None,
                     query_id: None,
                     multi_values_options: None,
@@ -564,12 +577,40 @@ mod tests {
             },
             visualizations: vec![],
             tags: None,
-        };
+        }
+    }
 
+    #[test]
+    fn test_build_parameter_map_coerces_text_param() {
+        let metadata = make_metadata_with_param("days", None);
         let cli_params = vec![("days".to_string(), serde_json::json!(90))];
         let result = build_parameter_map(&metadata, &cli_params, false)
             .unwrap()
             .unwrap();
         assert_eq!(result["days"], serde_json::Value::String("90".to_string()));
+    }
+
+    #[test]
+    fn test_build_parameter_map_interactive_no_tty_uses_default() {
+        let metadata = make_metadata_with_param("p", Some(serde_json::json!("default_val")));
+        let result = build_parameter_map(&metadata, &[], true).unwrap();
+        let map = result.unwrap();
+        assert_eq!(map["p"], serde_json::json!("default_val"));
+    }
+
+    #[test]
+    fn test_build_parameter_map_interactive_no_tty_no_default_bails() {
+        let metadata = make_metadata_with_param("p", None);
+        let err = build_parameter_map(&metadata, &[], true).unwrap_err();
+        assert!(err.to_string().contains("--param p="));
+    }
+
+    #[test]
+    fn test_build_parameter_map_interactive_no_tty_cli_param_overrides() {
+        let metadata = make_metadata_with_param("p", None);
+        let cli_params = vec![("p".to_string(), serde_json::json!("provided"))];
+        let result = build_parameter_map(&metadata, &cli_params, true).unwrap();
+        let map = result.unwrap();
+        assert_eq!(map["p"], serde_json::json!("provided"));
     }
 }
