@@ -78,6 +78,16 @@ fn create_directory_with_gitkeep(target_dir: &Path, dir_name: &str) -> Result<bo
     }
 }
 
+fn git_command(target_dir: &Path) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.current_dir(target_dir)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_INDEX_FILE");
+    cmd
+}
+
 fn git_available() -> bool {
     Command::new("git")
         .arg("--version")
@@ -93,25 +103,22 @@ fn precommit_available() -> bool {
 }
 
 fn ensure_git_identity(target_dir: &Path) -> Result<()> {
-    let name_configured = Command::new("git")
+    let name_configured = git_command(target_dir)
         .args(["config", "user.name"])
-        .current_dir(target_dir)
         .output()
         .is_ok_and(|o| o.status.success() && !o.stdout.trim_ascii().is_empty());
 
     if !name_configured {
-        let set_name = Command::new("git")
+        let set_name = git_command(target_dir)
             .args(["config", "user.name", "stmo-cli"])
-            .current_dir(target_dir)
             .status()
             .context("Failed to set git user.name")?;
         if !set_name.success() {
             anyhow::bail!("git config user.name failed");
         }
 
-        let set_email = Command::new("git")
+        let set_email = git_command(target_dir)
             .args(["config", "user.email", "stmo-cli@noreply"])
-            .current_dir(target_dir)
             .status()
             .context("Failed to set git user.email")?;
         if !set_email.success() {
@@ -137,9 +144,8 @@ fn setup_git_repo(target_dir: &Path, files_created: bool) -> Result<()> {
 
     if !git_dir.exists() {
         println!("\n⚙ Initializing git repository...");
-        let status = Command::new("git")
+        let status = git_command(target_dir)
             .arg("init")
-            .current_dir(target_dir)
             .status()
             .context("Failed to run git init")?;
 
@@ -153,9 +159,8 @@ fn setup_git_repo(target_dir: &Path, files_created: bool) -> Result<()> {
     if files_created {
         println!("⚙ Creating initial commit...");
 
-        let add_status = Command::new("git")
+        let add_status = git_command(target_dir)
             .args(["add", "."])
-            .current_dir(target_dir)
             .status()
             .context("Failed to run git add")?;
 
@@ -163,13 +168,12 @@ fn setup_git_repo(target_dir: &Path, files_created: bool) -> Result<()> {
             anyhow::bail!("git add failed");
         }
 
-        let commit_output = Command::new("git")
+        let commit_output = git_command(target_dir)
             .args([
                 "commit",
                 "-m",
                 "Initial commit: scaffold query/dashboard repository",
             ])
-            .current_dir(target_dir)
             .output()
             .context("Failed to run git commit")?;
 
@@ -221,9 +225,8 @@ fn setup_precommit(target_dir: &Path) -> Result<bool> {
     }
     println!("  ✓ Installed pre-commit git hooks");
 
-    let amend_output = Command::new("git")
+    let amend_output = git_command(target_dir)
         .args(["commit", "--amend", "--no-edit", "-a"])
-        .current_dir(target_dir)
         .output()
         .context("Failed to amend commit")?;
 
@@ -305,20 +308,24 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    fn test_git(dir: &std::path::Path) -> Command {
+        let mut cmd = Command::new("git");
+        cmd.current_dir(dir)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE");
+        cmd
+    }
+
     fn setup_test_repo(dir: &std::path::Path) {
-        Command::new("git")
-            .arg("init")
-            .current_dir(dir)
-            .status()
-            .unwrap();
-        Command::new("git")
+        test_git(dir).arg("init").status().unwrap();
+        test_git(dir)
             .args(["config", "user.name", "Test"])
-            .current_dir(dir)
             .status()
             .unwrap();
-        Command::new("git")
+        test_git(dir)
             .args(["config", "user.email", "test@test"])
-            .current_dir(dir)
             .status()
             .unwrap();
     }
@@ -378,9 +385,8 @@ mod tests {
 
         assert!(temp_dir.path().join(".git").exists());
 
-        let log_output = Command::new("git")
+        let log_output = test_git(temp_dir.path())
             .args(["log", "--oneline"])
-            .current_dir(temp_dir.path())
             .output()
             .unwrap();
 
@@ -399,22 +405,19 @@ mod tests {
         setup_test_repo(temp_dir.path());
 
         fs::write(temp_dir.path().join("existing.txt"), "test").unwrap();
-        Command::new("git")
+        test_git(temp_dir.path())
             .args(["add", "."])
-            .current_dir(temp_dir.path())
             .status()
             .unwrap();
-        Command::new("git")
+        test_git(temp_dir.path())
             .args(["commit", "-m", "First commit"])
-            .current_dir(temp_dir.path())
             .status()
             .unwrap();
 
         init_in(temp_dir.path()).unwrap();
 
-        let log_output = Command::new("git")
+        let log_output = test_git(temp_dir.path())
             .args(["log", "--oneline"])
-            .current_dir(temp_dir.path())
             .output()
             .unwrap();
 
@@ -440,22 +443,19 @@ mod tests {
         fs::write(temp_dir.path().join("dashboards/.gitkeep"), "").unwrap();
 
         setup_test_repo(temp_dir.path());
-        Command::new("git")
+        test_git(temp_dir.path())
             .args(["add", "."])
-            .current_dir(temp_dir.path())
             .status()
             .unwrap();
-        Command::new("git")
+        test_git(temp_dir.path())
             .args(["commit", "-m", "Existing commit"])
-            .current_dir(temp_dir.path())
             .status()
             .unwrap();
 
         init_in(temp_dir.path()).unwrap();
 
-        let log_output = Command::new("git")
+        let log_output = test_git(temp_dir.path())
             .args(["log", "--oneline"])
-            .current_dir(temp_dir.path())
             .output()
             .unwrap();
 
