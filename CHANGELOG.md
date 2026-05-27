@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.0] - 2026-05-27
+
+### Features
+- Add LLM-optimized `--help` output when running inside an AI coding assistant
+
+### Fixes
+- `execute --interactive`: fall back to parameter defaults when no TTY is available, instead of blocking
+- `update`: detect `~/.cargo/` write restrictions and show a clear error with instructions
+- `init`: produce a single clean initial commit (no more `git commit --amend`); clear inherited git environment variables so commands work correctly inside worktrees
+
 ## [0.6.1] - 2026-05-22
 
 ### Fixes

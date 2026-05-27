@@ -1,6 +1,6 @@
 [package]
 name = "stmo-cli"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2024"
 description = "CLI for version controlling Redash queries and dashboards"
 license = "MPL-2.0"
