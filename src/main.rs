@@ -258,10 +258,47 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
     Ok(())
 }
 
+fn is_llm_environment() -> bool {
+    std::env::var("CLAUDECODE").is_ok()
+        || std::env::var("CODEX_SANDBOX").is_ok()
+        || std::env::var("GEMINI_CLI").is_ok()
+        || std::env::var("OPENCODE").is_ok()
+}
+
+fn print_llm_help() {
+    print!(
+        r#"stmo-cli — version control Redash queries/dashboards on sql.telemetry.mozilla.org
+REDASH_API_KEY required | REDASH_URL optional (default: https://sql.telemetry.mozilla.org)
+API key: https://sql.telemetry.mozilla.org/users/me → API Key section
+
+discover | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N]
+data-sources [ID] [--schema] [--refresh] | archive IDs | archive --cleanup | unarchive IDs | init | update
+dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
+
+deploy: uses git diff by default; --all required outside a git repo
+archive IDs: archives on server + deletes local | archive --cleanup: deletes local only for already-archived (does NOT archive on server)
+dashboards: addressed by slug not ID; only favorited dashboards appear in dashboards discover
+
+Files: queries/<id>-<slug>.sql + .yaml, dashboards/<id>-<slug>.yaml | id=0 for new resources, auto-renamed after first deploy
+Required YAML fields: id name data_source_id options.parameters(can be []) visualizations(can be [])
+Slug from name: lowercase, non-alphanum→'-', collapse dashes (e.g. "Mozilla's .rpm"→"mozilla-s-rpm")
+enumOptions: use YAML multiline (|-), NOT escaped \n or deploy fails
+Multi-value enum params require JSON array: --param channels='["release","beta"]'
+JSON export: stmo-cli execute ID --format json 2>/dev/null > data.json
+"#
+    );
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let version_checker = VersionChecker::new("stmo-cli", env!("CARGO_PKG_VERSION"));
     version_checker.check_async();
+
+    if is_llm_environment() && std::env::args().any(|arg| arg == "--help" || arg == "-h") {
+        print_llm_help();
+        version_checker.print_warning();
+        return Ok(());
+    }
 
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
