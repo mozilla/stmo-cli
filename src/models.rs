@@ -22,6 +22,24 @@ fn default_width() -> u32 {
     1
 }
 
+fn deserialize_interval<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    match Option::<serde_json::Value>::deserialize(deserializer)? {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::Number(n)) => n
+            .as_u64()
+            .ok_or_else(|| D::Error::custom("interval is not a valid u64"))
+            .map(Some),
+        Some(serde_json::Value::String(s)) => s.parse::<u64>().map_err(D::Error::custom).map(Some),
+        Some(other) => Err(D::Error::custom(format!(
+            "unexpected interval value: {other}"
+        ))),
+    }
+}
+
 fn deserialize_null_as_empty_string<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -111,6 +129,7 @@ pub struct MultiValuesOptions {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Schedule {
+    #[serde(default, deserialize_with = "deserialize_interval")]
     pub interval: Option<u64>,
     pub time: Option<String>,
     pub day_of_week: Option<String>,
@@ -1010,5 +1029,29 @@ options:
         });
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_schedule_interval_as_integer() {
+        let s: Schedule = serde_json::from_str(r#"{"interval": 3600}"#).unwrap();
+        assert_eq!(s.interval, Some(3600));
+    }
+
+    #[test]
+    fn test_schedule_interval_as_string() {
+        let s: Schedule = serde_json::from_str(r#"{"interval": "3600"}"#).unwrap();
+        assert_eq!(s.interval, Some(3600));
+    }
+
+    #[test]
+    fn test_schedule_interval_null() {
+        let s: Schedule = serde_json::from_str(r#"{"interval": null}"#).unwrap();
+        assert_eq!(s.interval, None);
+    }
+
+    #[test]
+    fn test_schedule_interval_absent() {
+        let s: Schedule = serde_json::from_str(r"{}").unwrap();
+        assert_eq!(s.interval, None);
     }
 }
