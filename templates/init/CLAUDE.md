@@ -5,7 +5,7 @@ This repository contains version-controlled Redash queries and dashboards manage
 ## Quick Reference
 
 **Install**: `cargo install stmo-cli`
-**Commands**: `discover` `fetch` `deploy` `execute` `data-sources` `archive` `unarchive` `dashboards`
+**Commands**: `discover [--search TEXT] [--limit N]` `fetch` `deploy` `execute` `data-sources` `archive` `unarchive` `dashboards`
 **File Naming**: `queries/{id}-{slug}.sql` + `queries/{id}-{slug}.yaml`, `dashboards/{id}-{slug}.yaml`
 **Env Vars**: `REDASH_API_KEY` (required), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
@@ -17,7 +17,7 @@ This repository contains version-controlled Redash queries and dashboards manage
 
 1. **Find data sources**: `stmo-cli data-sources`
 2. **Explore schema**: `stmo-cli data-sources <id> --schema`
-3. **Discover queries**: `stmo-cli discover`
+3. **Discover queries**: `stmo-cli discover --search "<keyword>"` (or bare `stmo-cli discover` to list your own queries)
 4. **Fetch query**: `stmo-cli fetch <id>` → read `queries/<id>-*.sql`
 5. **Execute**: `stmo-cli execute <id> --format table`
 6. **Clean up**: `stmo-cli archive <id>` (MANDATORY)
@@ -27,7 +27,7 @@ To restore: `stmo-cli unarchive <id> && stmo-cli fetch <id>`
 ## Commands
 
 ### Queries
-**discover**: List all queries (IDs + names)
+**discover**: List your own queries (IDs + names). With `--search TEXT` (short: `-q`), performs a full-text search across all queries and dashboards; `--limit N` caps results per section (default 50)
 **fetch**: Download queries (`--all` for tracked, or `<ids>`)
 **deploy**: Upload changes (no args = git-changed files only or all if not in a git repo, `--all` for everything, or `<ids>`)
 **execute**: Run query (`--param key=val`, `--format table|json`, `--interactive`)
