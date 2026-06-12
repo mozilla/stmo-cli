@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- `discover --search`/`-q`: full-text search across all queries and dashboards (with `--limit`, default 50)
+
 ## [0.7.0] - 2026-05-27
 
 ### Features

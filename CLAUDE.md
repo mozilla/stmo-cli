@@ -4,7 +4,7 @@ Redash CLI that gives Claude Code direct access to sql.telemetry.mozilla.org —
 
 ## Quick Reference
 
-**Commands**: `discover` `init` `fetch` `deploy` `execute` `data-sources` `archive` `unarchive` `dashboards`
+**Commands**: `discover [--search TEXT] [--limit N]` `init` `fetch` `deploy` `execute` `data-sources` `archive` `unarchive` `dashboards`
 **Env Vars**: `REDASH_API_KEY` (required), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
 ## Key Constraints
@@ -26,7 +26,7 @@ src/
 ├── models.rs            # Data structures
 └── commands/
     ├── mod.rs           # OutputFormat enum
-    ├── discover.rs      # List all resources
+    ├── discover.rs      # List own queries or full-text search queries + dashboards
     ├── init.rs          # Create directory
     ├── fetch.rs         # Download queries, slugify()
     ├── deploy.rs        # Upload changes
@@ -48,6 +48,7 @@ src/
 ## API Client (api.rs)
 
 **Query**: list_my_queries, get_query, fetch_all_queries, create_query, create_or_update_query
+**Search**: search_queries(q, limit), search_dashboards(q, limit); `base_url()` accessor
 **Visualization**: create_visualization, update_visualization
 **Execution**: refresh_query, poll_job, get_query_result, execute_query_with_polling
 **Data Source**: list_data_sources, get_data_source, get_data_source_schema

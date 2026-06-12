@@ -64,7 +64,8 @@ stmo-cli init
 
 4. Discover available queries:
 ```bash
-stmo-cli discover
+stmo-cli discover                          # List your own queries
+stmo-cli discover --search "firefox dau"   # Full-text search queries + dashboards
 ```
 
 5. Fetch specific queries:
@@ -77,9 +78,10 @@ stmo-cli fetch 123 456 789
 ### Fetch Queries from Redash
 
 ```bash
-stmo-cli fetch --all        # Fetch all tracked queries
-stmo-cli fetch 123 456 789  # Fetch specific queries
-stmo-cli discover            # List available queries
+stmo-cli fetch --all                       # Fetch all tracked queries
+stmo-cli fetch 123 456 789                 # Fetch specific queries
+stmo-cli discover                          # List your own queries
+stmo-cli discover --search "firefox dau"   # Full-text search queries + dashboards (--limit, default 50)
 ```
 
 This creates/updates:
