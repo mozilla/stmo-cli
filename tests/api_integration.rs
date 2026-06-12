@@ -655,3 +655,121 @@ async fn test_refresh_query_forbidden_includes_error_body() {
     assert!(err.to_string().contains("403"));
     assert!(err.to_string().contains("Access denied"));
 }
+
+fn query_json(id: u64, name: &str) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "name": name,
+        "query": "SELECT 1",
+        "data_source_id": 1,
+        "is_archived": false,
+        "is_draft": false,
+        "schedule": null,
+        "options": {"parameters": []},
+        "visualizations": [],
+        "tags": [],
+        "updated_at": "2026-01-01T00:00:00",
+        "created_at": "2026-01-01T00:00:00",
+    })
+}
+
+fn dashboard_json(id: u64, slug: &str, name: &str) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "slug": slug,
+        "name": name,
+        "is_draft": false,
+        "is_archived": false,
+    })
+}
+
+#[tokio::test]
+async fn test_search_queries_passes_q_and_respects_limit() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/queries"))
+        .and(query_param("q", "firefox"))
+        .and(query_param("page", "1"))
+        .and(query_param("page_size", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "count": 100,
+            "page": 1,
+            "page_size": 2,
+            "results": [
+                query_json(1, "Firefox DAU"),
+                query_json(2, "Firefox MAU"),
+                query_json(3, "Firefox Crash Rate"),
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let results = client.search_queries("firefox", 2).await.unwrap();
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].name, "Firefox DAU");
+    assert_eq!(results[1].name, "Firefox MAU");
+}
+
+#[tokio::test]
+async fn test_search_dashboards_passes_q_and_respects_limit() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/dashboards"))
+        .and(query_param("q", "firefox"))
+        .and(query_param("page", "1"))
+        .and(query_param("page_size", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "count": 50,
+            "results": [
+                dashboard_json(1, "firefox-dau", "Firefox DAU"),
+                dashboard_json(2, "firefox-crash", "Firefox Crash"),
+                dashboard_json(3, "firefox-beta", "Firefox Beta"),
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let results = client.search_dashboards("firefox", 2).await.unwrap();
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].name, "Firefox DAU");
+    assert_eq!(results[1].name, "Firefox Crash");
+}
+
+#[tokio::test]
+async fn test_search_queries_retries_on_429() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/queries"))
+        .and(query_param("q", "firefox"))
+        .respond_with(ResponseTemplate::new(429))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/queries"))
+        .and(query_param("q", "firefox"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "count": 1,
+            "page": 1,
+            "page_size": 1,
+            "results": [query_json(1, "Firefox DAU")]
+        })))
+        .with_priority(2)
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let results = client.search_queries("firefox", 10).await.unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].name, "Firefox DAU");
+}

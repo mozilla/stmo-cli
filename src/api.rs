@@ -29,6 +29,11 @@ impl RedashClient {
         Ok(Self { client, base_url })
     }
 
+    #[must_use]
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     pub async fn list_my_queries(&self, page: u32, page_size: u32) -> Result<QueriesResponse> {
         let url = format!(
             "{}/api/queries/my?page={page}&page_size={page_size}",
@@ -704,5 +709,130 @@ impl RedashClient {
         }
 
         Ok(all_dashboards)
+    }
+
+    async fn get_with_retry(
+        &self,
+        url: &str,
+        params: &[(&str, String)],
+    ) -> Result<reqwest::Response> {
+        use tokio::time::{Duration, sleep};
+
+        const MAX_ATTEMPTS: u32 = 4;
+        let base_delays = [250u64, 500, 1000, 2000];
+
+        let mut last_error = anyhow::anyhow!("No attempts made");
+        for attempt in 0..MAX_ATTEMPTS {
+            let response = self
+                .client
+                .get(url)
+                .query(params)
+                .send()
+                .await
+                .with_context(|| format!("Failed to GET {url}"))?;
+
+            let status = response.status();
+            if status.is_success() {
+                return Ok(response);
+            }
+
+            let should_retry = status.as_u16() == 429 || status.is_server_error();
+            let error_body = response.text().await.unwrap_or_default();
+            last_error = anyhow::anyhow!("HTTP {}: {}", status.as_u16(), error_body);
+
+            if !should_retry || attempt + 1 == MAX_ATTEMPTS {
+                return Err(last_error);
+            }
+
+            let delay_ms = base_delays[attempt as usize];
+            sleep(Duration::from_millis(delay_ms)).await;
+        }
+
+        Err(last_error)
+    }
+
+    async fn list_queries(&self, q: &str, page: u32, page_size: u32) -> Result<QueriesResponse> {
+        let url = format!("{}/api/queries", self.base_url);
+        let params = [
+            ("page", page.to_string()),
+            ("page_size", page_size.to_string()),
+            ("q", q.to_string()),
+        ];
+        self.get_with_retry(&url, &params)
+            .await?
+            .json()
+            .await
+            .context("Failed to parse queries response")
+    }
+
+    async fn list_dashboards(
+        &self,
+        q: &str,
+        page: u32,
+        page_size: u32,
+    ) -> Result<DashboardsResponse> {
+        let url = format!("{}/api/dashboards", self.base_url);
+        let params = [
+            ("page", page.to_string()),
+            ("page_size", page_size.to_string()),
+            ("q", q.to_string()),
+        ];
+        self.get_with_retry(&url, &params)
+            .await?
+            .json()
+            .await
+            .context("Failed to parse dashboards response")
+    }
+
+    pub async fn search_queries(&self, q: &str, limit: usize) -> Result<Vec<Query>> {
+        const PAGE_SIZE: usize = 250;
+
+        let mut results: Vec<Query> = Vec::new();
+        let mut page = 1u32;
+
+        loop {
+            let remaining = limit - results.len();
+            #[allow(clippy::cast_possible_truncation)]
+            let page_size = remaining.min(PAGE_SIZE) as u32;
+            let response = self.list_queries(q, page, page_size).await?;
+
+            results.extend(response.results);
+
+            #[allow(clippy::cast_possible_truncation)]
+            if results.len() >= limit || results.len() >= response.count as usize {
+                break;
+            }
+
+            page += 1;
+        }
+
+        results.truncate(limit);
+        Ok(results)
+    }
+
+    pub async fn search_dashboards(&self, q: &str, limit: usize) -> Result<Vec<DashboardSummary>> {
+        const PAGE_SIZE: usize = 250;
+
+        let mut results: Vec<DashboardSummary> = Vec::new();
+        let mut page = 1u32;
+
+        loop {
+            let remaining = limit - results.len();
+            #[allow(clippy::cast_possible_truncation)]
+            let page_size = remaining.min(PAGE_SIZE) as u32;
+            let response = self.list_dashboards(q, page, page_size).await?;
+
+            results.extend(response.results);
+
+            #[allow(clippy::cast_possible_truncation)]
+            if results.len() >= limit || results.len() >= response.count as usize {
+                break;
+            }
+
+            page += 1;
+        }
+
+        results.truncate(limit);
+        Ok(results)
     }
 }

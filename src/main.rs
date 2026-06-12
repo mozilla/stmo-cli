@@ -17,8 +17,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    #[command(about = "List all queries from Redash")]
-    Discover,
+    #[command(
+        about = "List queries and dashboards from Redash",
+        long_about = "List queries and dashboards from Redash.\n\nWithout --search, lists your own queries.\nWith --search, performs a full-text search across all queries and dashboards."
+    )]
+    Discover {
+        #[arg(long, short = 'q', help = "Search queries and dashboards by text")]
+        search: Option<String>,
+        #[arg(long, default_value_t = 50, help = "Max results per section")]
+        limit: usize,
+    },
 
     #[command(about = "Scaffold a new query/dashboard repository")]
     Init,
@@ -168,7 +176,9 @@ enum DashboardCommands {
 
 async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
     match command {
-        Commands::Discover => commands::discover::discover(&client).await?,
+        Commands::Discover { search, limit } => {
+            commands::discover::discover(&client, search.as_deref(), limit).await?;
+        }
         Commands::Init | Commands::Update => unreachable!(),
         Commands::Fetch { query_ids, all } => {
             commands::fetch::fetch(&client, query_ids, all).await?;
