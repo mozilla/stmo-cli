@@ -281,7 +281,7 @@ fn print_llm_help() {
 REDASH_API_KEY required | REDASH_URL optional (default: https://sql.telemetry.mozilla.org)
 API key: https://sql.telemetry.mozilla.org/users/me → API Key section
 
-discover | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N]
+discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N]
 data-sources [ID] [--schema] [--refresh] | archive IDs | archive --cleanup | unarchive IDs | init | update
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
 
