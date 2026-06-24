@@ -54,6 +54,7 @@ src/
 **Data Source**: list_data_sources, get_data_source, get_data_source_schema
 **Archive**: archive_query, unarchive_query
 **Widget**: create_widget, update_widget, delete_widget
+**HTTP**: get_json, post_json
 **Errors**: ensure_success
 
 ## Testing
@@ -87,6 +88,23 @@ failure, which helps debugging:
 ```rust
 let response = ensure_success(response).await?;
 ```
+
+For endpoints that return JSON, achieve this by using `get_json<T>` / `post_json<T, B>`
+helpers: they send the request, route it through `ensure_success`, and parse the body
+into `T`. The last parameter `ctx` is used for request and parse failure messages
+(`Failed to request {ctx}` / `Failed to parse {ctx} response`):
+
+```rust
+let response: crate::models::MyResponse =
+  self.get_json(&url, "my query").await?;
+
+let request: crate::models::MyRequest = ...;
+let response: crate::models::MyResponse =
+  self.post_json(&url, &request, "my query").await?;
+```
+
+For wrapper responses, parse into the wrapper type then return the inner field. Endpoints
+returning `()` (no body) or needing retries use `ensure_success` / `get_with_retry` directly.
 
 ## Redash API Development
 
