@@ -44,9 +44,9 @@ impl RedashClient {
             .get(&url)
             .send()
             .await
-            .context("Failed to fetch my queries")?
-            .error_for_status()
-            .context("API returned error status")?;
+            .context("Failed to fetch my queries")?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -61,9 +61,9 @@ impl RedashClient {
             .get(&url)
             .send()
             .await
-            .context(format!("Failed to fetch query {query_id}"))?
-            .error_for_status()
-            .context("API returned error status")?;
+            .context(format!("Failed to fetch query {query_id}"))?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -78,9 +78,9 @@ impl RedashClient {
             .get(&url)
             .send()
             .await
-            .context("Failed to fetch data sources")?
-            .error_for_status()
-            .context("API returned error status")?;
+            .context("Failed to fetch data sources")?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -95,9 +95,9 @@ impl RedashClient {
             .get(&url)
             .send()
             .await
-            .context(format!("Failed to fetch data source {data_source_id}"))?
-            .error_for_status()
-            .context("API returned error status")?;
+            .context(format!("Failed to fetch data source {data_source_id}"))?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -119,16 +119,11 @@ impl RedashClient {
             format!("{}/api/data_sources/{data_source_id}/schema", self.base_url)
         };
 
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context(format!(
-                "Failed to fetch schema for data source {data_source_id}"
-            ))?
-            .error_for_status()
-            .context("API returned error status")?;
+        let response = self.client.get(&url).send().await.context(format!(
+            "Failed to fetch schema for data source {data_source_id}"
+        ))?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -144,9 +139,9 @@ impl RedashClient {
             .json(create_query)
             .send()
             .await
-            .context("Failed to create query")?
-            .error_for_status()
-            .context("API returned error status")?;
+            .context("Failed to create query")?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -162,9 +157,9 @@ impl RedashClient {
             .json(query)
             .send()
             .await
-            .context(format!("Failed to update query {}", query.id))?
-            .error_for_status()
-            .context("API returned error status")?;
+            .context(format!("Failed to update query {}", query.id))?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -186,9 +181,9 @@ impl RedashClient {
             .await
             .context(format!(
                 "Failed to create visualization for query {query_id}"
-            ))?
-            .error_for_status()
-            .context("API returned error status")?;
+            ))?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -207,9 +202,9 @@ impl RedashClient {
             .json(viz)
             .send()
             .await
-            .context(format!("Failed to update visualization {}", viz.id))?
-            .error_for_status()
-            .context("API returned error status")?;
+            .context(format!("Failed to update visualization {}", viz.id))?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -267,14 +262,7 @@ impl RedashClient {
             .await
             .context(format!("Failed to refresh query {query_id}"))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let error_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unable to read error response".to_string());
-            anyhow::bail!("API returned error status {status}: {error_body}");
-        }
+        let response = ensure_success(response).await?;
 
         let job_response: crate::models::JobResponse = response
             .json()
@@ -292,9 +280,9 @@ impl RedashClient {
             .get(&url)
             .send()
             .await
-            .context(format!("Failed to poll job {job_id}"))?
-            .error_for_status()
-            .context("API returned error status")?;
+            .context(format!("Failed to poll job {job_id}"))?;
+
+        let response = ensure_success(response).await?;
 
         let job_response: crate::models::JobResponse = response
             .json()
@@ -314,16 +302,11 @@ impl RedashClient {
             self.base_url
         );
 
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context(format!(
-                "Failed to fetch result {result_id} for query {query_id}"
-            ))?
-            .error_for_status()
-            .context("API returned error status")?;
+        let response = self.client.get(&url).send().await.context(format!(
+            "Failed to fetch result {result_id} for query {query_id}"
+        ))?;
+
+        let response = ensure_success(response).await?;
 
         let result_response: crate::models::QueryResultResponse = response
             .json()
@@ -395,9 +378,9 @@ impl RedashClient {
             .json(&payload)
             .send()
             .await
-            .context(format!("Failed to archive query {query_id}"))?
-            .error_for_status()
-            .context("API returned error status")?;
+            .context(format!("Failed to archive query {query_id}"))?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -415,9 +398,9 @@ impl RedashClient {
             .json(&payload)
             .send()
             .await
-            .context(format!("Failed to unarchive query {query_id}"))?
-            .error_for_status()
-            .context("API returned error status")?;
+            .context(format!("Failed to unarchive query {query_id}"))?;
+
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -435,14 +418,7 @@ impl RedashClient {
             .await
             .context("Failed to create dashboard")?;
 
-        let status = response.status();
-        if !status.is_success() {
-            anyhow::bail!(
-                "HTTP {}: {}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            );
-        }
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -466,14 +442,7 @@ impl RedashClient {
             .await
             .context("Failed to fetch dashboards")?;
 
-        let status = response.status();
-        if !status.is_success() {
-            anyhow::bail!(
-                "HTTP {}: {}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            );
-        }
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -490,15 +459,7 @@ impl RedashClient {
             .await
             .context(format!("Failed to fetch dashboard {slug_or_id}"))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "HTTP {}: {} — {body}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            );
-        }
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -516,15 +477,7 @@ impl RedashClient {
             .await
             .context(format!("Failed to update dashboard {}", dashboard.id))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "HTTP {}: {} — {body}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            );
-        }
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -543,14 +496,7 @@ impl RedashClient {
             .await
             .context(format!("Failed to archive dashboard {dashboard_id}"))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            anyhow::bail!(
-                "HTTP {}: {}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            );
-        }
+        ensure_success(response).await?;
 
         Ok(())
     }
@@ -567,14 +513,7 @@ impl RedashClient {
             .await
             .context(format!("Failed to unarchive dashboard {dashboard_id}"))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            anyhow::bail!(
-                "HTTP {}: {}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            );
-        }
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -592,15 +531,7 @@ impl RedashClient {
             .await
             .context("Failed to create widget")?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "HTTP {}: {} — {body}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            );
-        }
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -622,15 +553,7 @@ impl RedashClient {
             .await
             .context(format!("Failed to update widget {widget_id}"))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "HTTP {}: {} — {body}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            );
-        }
+        let response = ensure_success(response).await?;
 
         response
             .json()
@@ -647,14 +570,7 @@ impl RedashClient {
             .await
             .context(format!("Failed to delete widget {widget_id}"))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            anyhow::bail!(
-                "HTTP {}: {}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            );
-        }
+        ensure_success(response).await?;
 
         Ok(())
     }
@@ -669,14 +585,7 @@ impl RedashClient {
             .await
             .context(format!("Failed to favorite dashboard {slug}"))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            anyhow::bail!(
-                "HTTP {}: {}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("Unknown error")
-            );
-        }
+        ensure_success(response).await?;
 
         Ok(())
     }
@@ -732,16 +641,12 @@ impl RedashClient {
                 .with_context(|| format!("Failed to GET {url}"))?;
 
             let status = response.status();
-            if status.is_success() {
-                return Ok(response);
-            }
-
             let should_retry = status.as_u16() == 429 || status.is_server_error();
-            let error_body = response.text().await.unwrap_or_default();
-            last_error = anyhow::anyhow!("HTTP {}: {}", status.as_u16(), error_body);
 
-            if !should_retry || attempt + 1 == MAX_ATTEMPTS {
-                return Err(last_error);
+            match ensure_success(response).await {
+                Ok(response) => return Ok(response),
+                Err(err) if !should_retry || attempt + 1 == MAX_ATTEMPTS => return Err(err),
+                Err(err) => last_error = err,
             }
 
             let delay_ms = base_delays[attempt as usize];
@@ -835,4 +740,13 @@ impl RedashClient {
         results.truncate(limit);
         Ok(results)
     }
+}
+
+async fn ensure_success(response: reqwest::Response) -> Result<reqwest::Response> {
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("API error {status}: {body}");
+    }
+    Ok(response)
 }

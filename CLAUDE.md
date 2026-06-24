@@ -54,6 +54,7 @@ src/
 **Data Source**: list_data_sources, get_data_source, get_data_source_schema
 **Archive**: archive_query, unarchive_query
 **Widget**: create_widget, update_widget, delete_widget
+**Errors**: ensure_success
 
 ## Testing
 
@@ -78,14 +79,13 @@ fn test_something() {
 For integration tests needing current directory context, use mutex + TempWorkDir pattern (see `tests/dashboard_commands.rs`).
 
 ### API Error Handling
-Don't use `.error_for_status()` - it discards the response body. Instead:
+Route every response through the `ensure_success` helper in `api.rs`. It returns the
+response on success and bails with a uniform `API error {status}: {body}` message
+(status `Display` already includes the canonical reason, e.g. `404 Not Found`) on
+failure, which helps debugging:
 
 ```rust
-let status = response.status();
-if !status.is_success() {
-    let error_body = response.text().await.unwrap_or_default();
-    anyhow::bail!("API error {status}: {error_body}");
-}
+let response = ensure_success(response).await?;
 ```
 
 ## Redash API Development
