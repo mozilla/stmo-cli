@@ -6,6 +6,8 @@ use crate::models::{
 };
 use anyhow::{Context, Result};
 use reqwest::{Client, header};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 pub struct RedashClient {
     client: Client,
@@ -34,75 +36,66 @@ impl RedashClient {
         &self.base_url
     }
 
+    async fn get_json<T: DeserializeOwned>(&self, url: &str, ctx: &str) -> Result<T> {
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .with_context(|| format!("Failed to request {ctx}"))?;
+
+        let response = ensure_success(response).await?;
+
+        response
+            .json()
+            .await
+            .with_context(|| format!("Failed to parse {ctx} response"))
+    }
+
+    async fn post_json<T: DeserializeOwned, B: Serialize + ?Sized>(
+        &self,
+        url: &str,
+        body: &B,
+        ctx: &str,
+    ) -> Result<T> {
+        let response = self
+            .client
+            .post(url)
+            .json(body)
+            .send()
+            .await
+            .with_context(|| format!("Failed to request {ctx}"))?;
+
+        let response = ensure_success(response).await?;
+
+        response
+            .json()
+            .await
+            .with_context(|| format!("Failed to parse {ctx} response"))
+    }
+
     pub async fn list_my_queries(&self, page: u32, page_size: u32) -> Result<QueriesResponse> {
         let url = format!(
             "{}/api/queries/my?page={page}&page_size={page_size}",
             self.base_url
         );
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context("Failed to fetch my queries")?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse queries response")
+        self.get_json(&url, "my queries").await
     }
 
     pub async fn get_query(&self, query_id: u64) -> Result<Query> {
         let url = format!("{}/api/queries/{query_id}", self.base_url);
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context(format!("Failed to fetch query {query_id}"))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse query response")
+        self.get_json(&url, &format!("query {query_id}")).await
     }
 
     pub async fn list_data_sources(&self) -> Result<Vec<DataSource>> {
         let url = format!("{}/api/data_sources", self.base_url);
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context("Failed to fetch data sources")?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse data sources response")
+        self.get_json(&url, "data sources").await
     }
 
     pub async fn get_data_source(&self, data_source_id: u64) -> Result<DataSource> {
         let url = format!("{}/api/data_sources/{data_source_id}", self.base_url);
-        let response = self
-            .client
-            .get(&url)
-            .send()
+        self.get_json(&url, &format!("data source {data_source_id}"))
             .await
-            .context(format!("Failed to fetch data source {data_source_id}"))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse data source response")
     }
 
     pub async fn get_data_source_schema(
@@ -119,52 +112,19 @@ impl RedashClient {
             format!("{}/api/data_sources/{data_source_id}/schema", self.base_url)
         };
 
-        let response = self.client.get(&url).send().await.context(format!(
-            "Failed to fetch schema for data source {data_source_id}"
-        ))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
+        self.get_json(&url, &format!("schema for data source {data_source_id}"))
             .await
-            .context("Failed to parse schema response")
     }
 
     pub async fn create_query(&self, create_query: &CreateQuery) -> Result<Query> {
         let url = format!("{}/api/queries", self.base_url);
-        let response = self
-            .client
-            .post(&url)
-            .json(create_query)
-            .send()
-            .await
-            .context("Failed to create query")?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse query create response")
+        self.post_json(&url, create_query, "new query").await
     }
 
     pub async fn create_or_update_query(&self, query: &Query) -> Result<Query> {
         let url = format!("{}/api/queries/{}", self.base_url, query.id);
-        let response = self
-            .client
-            .post(&url)
-            .json(query)
-            .send()
+        self.post_json(&url, query, &format!("query {} update", query.id))
             .await
-            .context(format!("Failed to update query {}", query.id))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse query update response")
     }
 
     pub async fn create_visualization(
@@ -173,22 +133,8 @@ impl RedashClient {
         viz: &crate::models::CreateVisualization,
     ) -> Result<crate::models::Visualization> {
         let url = format!("{}/api/visualizations", self.base_url);
-        let response = self
-            .client
-            .post(&url)
-            .json(viz)
-            .send()
+        self.post_json(&url, viz, &format!("visualization for query {query_id}"))
             .await
-            .context(format!(
-                "Failed to create visualization for query {query_id}"
-            ))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse visualization create response")
     }
 
     pub async fn update_visualization(
@@ -196,20 +142,8 @@ impl RedashClient {
         viz: &crate::models::Visualization,
     ) -> Result<crate::models::Visualization> {
         let url = format!("{}/api/visualizations/{}", self.base_url, viz.id);
-        let response = self
-            .client
-            .post(&url)
-            .json(viz)
-            .send()
+        self.post_json(&url, viz, &format!("visualization {} update", viz.id))
             .await
-            .context(format!("Failed to update visualization {}", viz.id))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse visualization update response")
     }
 
     pub async fn fetch_all_queries(&self) -> Result<Vec<Query>> {
@@ -254,20 +188,9 @@ impl RedashClient {
             parameters,
         };
 
-        let response = self
-            .client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await
-            .context(format!("Failed to refresh query {query_id}"))?;
-
-        let response = ensure_success(response).await?;
-
-        let job_response: crate::models::JobResponse = response
-            .json()
-            .await
-            .context("Failed to parse job response")?;
+        let job_response: crate::models::JobResponse = self
+            .post_json(&url, &request, &format!("query {query_id} refresh"))
+            .await?;
 
         Ok(job_response.job)
     }
@@ -275,19 +198,8 @@ impl RedashClient {
     pub async fn poll_job(&self, job_id: &str) -> Result<crate::models::Job> {
         let url = format!("{}/api/jobs/{job_id}", self.base_url);
 
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context(format!("Failed to poll job {job_id}"))?;
-
-        let response = ensure_success(response).await?;
-
-        let job_response: crate::models::JobResponse = response
-            .json()
-            .await
-            .context("Failed to parse job response")?;
+        let job_response: crate::models::JobResponse =
+            self.get_json(&url, &format!("job {job_id}")).await?;
 
         Ok(job_response.job)
     }
@@ -302,16 +214,9 @@ impl RedashClient {
             self.base_url
         );
 
-        let response = self.client.get(&url).send().await.context(format!(
-            "Failed to fetch result {result_id} for query {query_id}"
-        ))?;
-
-        let response = ensure_success(response).await?;
-
-        let result_response: crate::models::QueryResultResponse = response
-            .json()
-            .await
-            .context("Failed to parse query result response")?;
+        let result_response: crate::models::QueryResultResponse = self
+            .get_json(&url, &format!("result {result_id} for query {query_id}"))
+            .await?;
 
         Ok(result_response.query_result)
     }
@@ -371,59 +276,20 @@ impl RedashClient {
     pub async fn archive_query(&self, query_id: u64) -> Result<Query> {
         let url = format!("{}/api/queries/{query_id}", self.base_url);
         let payload = serde_json::json!({"is_archived": true});
-
-        let response = self
-            .client
-            .post(&url)
-            .json(&payload)
-            .send()
+        self.post_json(&url, &payload, &format!("query {query_id} archive"))
             .await
-            .context(format!("Failed to archive query {query_id}"))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse archive response")
     }
 
     pub async fn unarchive_query(&self, query_id: u64) -> Result<Query> {
         let url = format!("{}/api/queries/{query_id}", self.base_url);
         let payload = serde_json::json!({"is_archived": false});
-
-        let response = self
-            .client
-            .post(&url)
-            .json(&payload)
-            .send()
+        self.post_json(&url, &payload, &format!("query {query_id} unarchive"))
             .await
-            .context(format!("Failed to unarchive query {query_id}"))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse unarchive response")
     }
 
     pub async fn create_dashboard(&self, dashboard: &CreateDashboard) -> Result<Dashboard> {
         let url = format!("{}/api/dashboards", self.base_url);
-        let response = self
-            .client
-            .post(&url)
-            .json(dashboard)
-            .send()
-            .await
-            .context("Failed to create dashboard")?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse dashboard create response")
+        self.post_json(&url, dashboard, "new dashboard").await
     }
 
     pub async fn list_favorite_dashboards(
@@ -435,54 +301,23 @@ impl RedashClient {
             "{}/api/dashboards/favorites?page={page}&page_size={page_size}",
             self.base_url
         );
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context("Failed to fetch dashboards")?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse dashboards response")
+        self.get_json(&url, "favorite dashboards").await
     }
 
     pub async fn get_dashboard(&self, slug_or_id: &str) -> Result<Dashboard> {
         let url = format!("{}/api/dashboards/{slug_or_id}", self.base_url);
-        let response = self
-            .client
-            .get(&url)
-            .send()
+        self.get_json(&url, &format!("dashboard {slug_or_id}"))
             .await
-            .context(format!("Failed to fetch dashboard {slug_or_id}"))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse dashboard response")
     }
 
     pub async fn update_dashboard(&self, dashboard: &Dashboard) -> Result<Dashboard> {
         let url = format!("{}/api/dashboards/{}", self.base_url, dashboard.id);
-        let response = self
-            .client
-            .post(&url)
-            .json(dashboard)
-            .send()
-            .await
-            .context(format!("Failed to update dashboard {}", dashboard.id))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse dashboard update response")
+        self.post_json(
+            &url,
+            dashboard,
+            &format!("dashboard {} update", dashboard.id),
+        )
+        .await
     }
 
     pub async fn archive_dashboard(&self, dashboard_id: u64) -> Result<()> {
@@ -504,39 +339,17 @@ impl RedashClient {
     pub async fn unarchive_dashboard(&self, dashboard_id: u64) -> Result<Dashboard> {
         let url = format!("{}/api/dashboards/{dashboard_id}", self.base_url);
         let payload = serde_json::json!({"is_archived": false});
-
-        let response = self
-            .client
-            .post(&url)
-            .json(&payload)
-            .send()
-            .await
-            .context(format!("Failed to unarchive dashboard {dashboard_id}"))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse unarchive response")
+        self.post_json(
+            &url,
+            &payload,
+            &format!("dashboard {dashboard_id} unarchive"),
+        )
+        .await
     }
 
     pub async fn create_widget(&self, widget: &CreateWidget) -> Result<crate::models::Widget> {
         let url = format!("{}/api/widgets", self.base_url);
-        let response = self
-            .client
-            .post(&url)
-            .json(widget)
-            .send()
-            .await
-            .context("Failed to create widget")?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse widget create response")
+        self.post_json(&url, widget, "new widget").await
     }
 
     pub async fn update_widget(
@@ -545,20 +358,8 @@ impl RedashClient {
         widget: &CreateWidget,
     ) -> Result<crate::models::Widget> {
         let url = format!("{}/api/widgets/{widget_id}", self.base_url);
-        let response = self
-            .client
-            .post(&url)
-            .json(widget)
-            .send()
+        self.post_json(&url, widget, &format!("widget {widget_id} update"))
             .await
-            .context(format!("Failed to update widget {widget_id}"))?;
-
-        let response = ensure_success(response).await?;
-
-        response
-            .json()
-            .await
-            .context("Failed to parse widget update response")
     }
 
     pub async fn delete_widget(&self, widget_id: u64) -> Result<()> {
