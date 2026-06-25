@@ -32,6 +32,7 @@ src/
     ├── fetch.rs         # Download queries, slugify()
     ├── deploy.rs        # Upload changes
     ├── execute.rs       # Execute queries
+    ├── dynamic_dates.rs # Resolve d_* date/range tokens client-side (port of Redash frontend)
     ├── datasources.rs   # List/explore data sources
     ├── archive.rs       # Archive/unarchive queries
     └── dashboards.rs    # Dashboard management

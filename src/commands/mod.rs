@@ -3,6 +3,7 @@ pub mod dashboards;
 pub mod datasources;
 pub mod deploy;
 pub mod discover;
+pub mod dynamic_dates;
 pub mod execute;
 pub mod fetch;
 pub mod init;

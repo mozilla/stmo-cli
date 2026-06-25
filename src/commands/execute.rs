@@ -184,11 +184,30 @@ fn build_parameter_map(
         }
     }
 
+    resolve_dynamic_dates(&metadata.options.parameters, &mut param_map);
+
     Ok(if param_map.is_empty() {
         None
     } else {
         Some(param_map)
     })
+}
+
+// Resolve `d_*` tokens (from `--param` or a stored parameter default) before either
+// execution path runs. The stored-query API rejects raw `d_*` and the ad-hoc API passes
+// it through literally — only Redash's frontend expands them — so this must apply to both
+// the local and `--remote` paths. See `dynamic_dates`.
+fn resolve_dynamic_dates(
+    parameters: &[Parameter],
+    param_map: &mut HashMap<String, serde_json::Value>,
+) {
+    for param in parameters {
+        if let Some(value) = param_map.get(&param.name)
+            && let Some(resolved) = super::dynamic_dates::resolve(value, &param.param_type)
+        {
+            param_map.insert(param.name.clone(), resolved);
+        }
+    }
 }
 
 fn format_results_json(
@@ -556,6 +575,14 @@ mod tests {
     }
 
     fn make_metadata_with_param(name: &str, default: Option<serde_json::Value>) -> QueryMetadata {
+        make_metadata_with_typed_param(name, "text", default)
+    }
+
+    fn make_metadata_with_typed_param(
+        name: &str,
+        param_type: &str,
+        default: Option<serde_json::Value>,
+    ) -> QueryMetadata {
         use crate::models::{Parameter, QueryOptions};
         QueryMetadata {
             id: 1,
@@ -568,7 +595,7 @@ mod tests {
                 parameters: vec![Parameter {
                     name: name.to_string(),
                     title: name.to_string(),
-                    param_type: "text".to_string(),
+                    param_type: param_type.to_string(),
                     value: default,
                     enum_options: None,
                     query_id: None,
@@ -623,6 +650,87 @@ mod tests {
         let result = build_parameter_map(&metadata, &cli_params, true, true).unwrap();
         let map = result.unwrap();
         assert_eq!(map["p"], serde_json::json!("provided"));
+    }
+
+    #[test]
+    fn test_build_parameter_map_resolves_range_default_token() {
+        use chrono::{Duration, Local};
+        let metadata = make_metadata_with_typed_param(
+            "range",
+            "date-range",
+            Some(serde_json::json!("d_last_7_days")),
+        );
+        let map = build_parameter_map(&metadata, &[], false, false)
+            .unwrap()
+            .unwrap();
+        let range = &map["range"];
+
+        let today = Local::now().naive_local().date();
+        let expected_start = (today - Duration::days(7)).format("%Y-%m-%d").to_string();
+        let expected_end = today.format("%Y-%m-%d").to_string();
+        assert_eq!(range["start"], serde_json::json!(expected_start));
+        assert_eq!(range["end"], serde_json::json!(expected_end));
+    }
+
+    #[test]
+    fn test_build_parameter_map_resolves_cli_date_token() {
+        use chrono::Local;
+        let metadata = make_metadata_with_typed_param("d", "date", None);
+        let cli_params = vec![("d".to_string(), serde_json::json!("d_now"))];
+        let map = build_parameter_map(&metadata, &cli_params, false, false)
+            .unwrap()
+            .unwrap();
+        let expected = Local::now().naive_local().format("%Y-%m-%d").to_string();
+        assert_eq!(map["d"], serde_json::json!(expected));
+    }
+
+    #[test]
+    fn test_build_parameter_map_leaves_text_token_literal() {
+        let metadata = make_metadata_with_typed_param("t", "text", None);
+        let cli_params = vec![("t".to_string(), serde_json::json!("d_now"))];
+        let map = build_parameter_map(&metadata, &cli_params, false, false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(map["t"], serde_json::json!("d_now"));
+    }
+
+    #[test]
+    fn test_build_parameter_map_resolves_dynamic_date_range_default() {
+        use crate::models::{Parameter, QueryOptions};
+        let metadata = QueryMetadata {
+            id: 1,
+            name: "test".to_string(),
+            description: None,
+            data_source_id: 1,
+            user_id: None,
+            schedule: None,
+            options: QueryOptions {
+                parameters: vec![Parameter {
+                    name: "period".to_string(),
+                    title: "period".to_string(),
+                    param_type: "date-range".to_string(),
+                    value: Some(serde_json::json!("d_last_7_days")),
+                    enum_options: None,
+                    query_id: None,
+                    multi_values_options: None,
+                }],
+            },
+            visualizations: vec![],
+            tags: None,
+        };
+
+        let map = build_parameter_map(&metadata, &[], false, false)
+            .unwrap()
+            .unwrap();
+        let period = map.get("period").unwrap();
+        assert!(
+            period.get("start").is_some(),
+            "expected resolved start: {period}"
+        );
+        assert!(
+            period.get("end").is_some(),
+            "expected resolved end: {period}"
+        );
     }
 
     #[test]

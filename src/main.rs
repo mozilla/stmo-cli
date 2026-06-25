@@ -294,6 +294,7 @@ Required YAML fields: id name data_source_id options.parameters(can be []) visua
 Slug from name: lowercase, non-alphanum→'-', collapse dashes (e.g. "Mozilla's .rpm"→"mozilla-s-rpm")
 enumOptions: use YAML multiline (|-), NOT escaped \n or deploy fails
 Multi-value enum params require JSON array: --param channels='["release","beta"]'
+Dynamic date tokens resolved client-side (tracked queries only): d_now/d_yesterday (date types); d_today/d_last_7_days/d_last_month/d_this_week/... (range types)
 JSON export: stmo-cli execute ID --format json 2>/dev/null > data.json
 "#
     );
