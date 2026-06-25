@@ -50,10 +50,28 @@ enum Commands {
         all: bool,
     },
 
-    #[command(about = "Execute a query and display results")]
+    #[command(
+        about = "Execute a query and display results",
+        long_about = "Execute a query and display results.\n\nBy default, runs the local .sql for the given query ID (validate edits before deploying).\nUse --remote to run the server-stored SQL instead.\nUse --file <path> --data-source <id> to run arbitrary SQL with no tracked query. Ad-hoc SQL can also be piped via stdin: --file - --data-source <id>, or simply --data-source <id>. Ad-hoc SQL has no parameter schema, so --param values are sent verbatim (d_* dates are not expanded and multi-value lists are not joined); inline such values directly in the SQL (e.g. IN ('release', 'beta'))."
+    )]
     Execute {
-        #[arg(help = "Query ID to execute (must be fetched locally first)")]
-        query_id: u64,
+        #[arg(help = "Query ID to execute (uses local .sql by default)")]
+        query_id: Option<u64>,
+
+        #[arg(
+            long,
+            help = "Run arbitrary SQL ad-hoc from a file, or '-' for stdin (requires --data-source)"
+        )]
+        file: Option<String>,
+
+        #[arg(
+            long,
+            help = "Data source ID for ad-hoc execution (--file or piped stdin)"
+        )]
+        data_source: Option<u64>,
+
+        #[arg(long, help = "Run the server-stored SQL instead of the local .sql")]
+        remote: bool,
 
         #[arg(
             long,
@@ -188,6 +206,9 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
         }
         Commands::Execute {
             query_id,
+            file,
+            data_source,
+            remote,
             param,
             format,
             interactive,
@@ -199,12 +220,17 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
                 .context("Invalid output format")?;
             commands::execute::execute(
                 &client,
-                query_id,
-                param,
-                output_format,
-                interactive,
-                timeout,
-                limit,
+                commands::execute::ExecuteArgs {
+                    query_id,
+                    file,
+                    data_source,
+                    param_args: param,
+                    format: output_format,
+                    interactive,
+                    timeout_secs: timeout,
+                    limit_rows: limit,
+                    remote,
+                },
             )
             .await?;
         }
@@ -249,21 +275,26 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
             }
             commands::archive::unarchive(&client, query_ids).await?;
         }
-        Commands::Dashboards { command } => match command {
-            DashboardCommands::Discover => commands::dashboards::discover(&client).await?,
-            DashboardCommands::Fetch { slugs } => {
-                commands::dashboards::fetch(&client, slugs).await?;
-            }
-            DashboardCommands::Deploy { slugs, all } => {
-                commands::dashboards::deploy(&client, slugs, all).await?;
-            }
-            DashboardCommands::Archive { slugs } => {
-                commands::dashboards::archive(&client, slugs).await?;
-            }
-            DashboardCommands::Unarchive { slugs } => {
-                commands::dashboards::unarchive(&client, slugs).await?;
-            }
-        },
+        Commands::Dashboards { command } => run_dashboard_command(&client, command).await?,
+    }
+    Ok(())
+}
+
+async fn run_dashboard_command(client: &RedashClient, command: DashboardCommands) -> Result<()> {
+    match command {
+        DashboardCommands::Discover => commands::dashboards::discover(client).await?,
+        DashboardCommands::Fetch { slugs } => {
+            commands::dashboards::fetch(client, slugs).await?;
+        }
+        DashboardCommands::Deploy { slugs, all } => {
+            commands::dashboards::deploy(client, slugs, all).await?;
+        }
+        DashboardCommands::Archive { slugs } => {
+            commands::dashboards::archive(client, slugs).await?;
+        }
+        DashboardCommands::Unarchive { slugs } => {
+            commands::dashboards::unarchive(client, slugs).await?;
+        }
     }
     Ok(())
 }
@@ -281,10 +312,12 @@ fn print_llm_help() {
 REDASH_API_KEY required | REDASH_URL optional (default: https://sql.telemetry.mozilla.org)
 API key: https://sql.telemetry.mozilla.org/users/me → API Key section
 
-discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N]
+discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--remote] [--format table|json] [--param k=v]... [--interactive] [--limit N]
+execute --file PATH|- --data-source ID [--param k=v]... (run arbitrary SQL with no tracked query; PATH or '-'/bare --data-source reads stdin; no parameter schema, so --param values are sent verbatim — d_* dates not expanded, multi-value lists not joined — inline such values in the SQL)
 data-sources [ID] [--schema] [--refresh] | archive IDs | archive --cleanup | unarchive IDs | init | update
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
 
+execute ID: runs LOCAL queries/<id>.sql by default (validate edits pre-deploy); --remote runs the server-stored SQL
 deploy: uses git diff by default; --all required outside a git repo
 archive IDs: archives on server + deletes local | archive --cleanup: deletes local only for already-archived (does NOT archive on server)
 dashboards: addressed by slug not ID; only favorited dashboards appear in dashboards discover

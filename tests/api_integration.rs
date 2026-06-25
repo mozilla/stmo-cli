@@ -5,7 +5,7 @@ mod common;
 
 use common::*;
 use stmo_cli::api::RedashClient;
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{body_partial_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
@@ -188,6 +188,83 @@ async fn test_execute_query_with_polling_timeout() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.to_string().contains("timed out"));
+}
+
+#[tokio::test]
+async fn test_refresh_adhoc_query_sends_sql_and_data_source() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/query_results"))
+        .and(body_partial_json(serde_json::json!({
+            "query": "SELECT 1 AS x",
+            "data_source_id": 63,
+            "max_age": 0
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "job": {
+                "id": "adhoc-job",
+                "status": 1,
+                "query_result_id": null,
+                "error": null
+            }
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let job = client
+        .refresh_adhoc_query("SELECT 1 AS x", 63, None)
+        .await
+        .unwrap();
+
+    assert_eq!(job.id, "adhoc-job");
+    assert_eq!(job.status, 1);
+}
+
+#[tokio::test]
+async fn test_get_adhoc_query_result_success() {
+    let mock_server = MockServer::start().await;
+
+    mock_get_adhoc_query_result(789).mount(&mock_server).await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let result = client.get_adhoc_query_result(789).await.unwrap();
+
+    assert_eq!(result.id, 789);
+    assert_eq!(result.data.columns.len(), 1);
+    assert_eq!(result.data.columns[0].name, "x");
+    assert_eq!(result.data.rows.len(), 1);
+}
+
+#[tokio::test]
+async fn test_execute_adhoc_with_polling_success() {
+    let mock_server = MockServer::start().await;
+
+    mock_refresh_adhoc_query("adhoc-job")
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    mock_poll_job_success("adhoc-job", 789)
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    mock_get_adhoc_query_result(789)
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let result = client
+        .execute_adhoc_with_polling("SELECT 1 AS x", 63, None, 10, 100)
+        .await
+        .unwrap();
+
+    assert_eq!(result.id, 789);
+    assert_eq!(result.data.rows.len(), 1);
 }
 
 #[tokio::test]

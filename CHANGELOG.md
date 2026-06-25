@@ -4,6 +4,9 @@
 
 ### Features
 - `discover --search`/`-q`: full-text search across all queries and dashboards (with `--limit`, default 50)
+- `execute ID`: now runs the local `queries/<id>.sql` by default, so you can validate edits before deploying
+- `execute ID --remote`: run the server-stored SQL instead of the local `.sql` (previous default behavior)
+- `execute --data-source ID`: run arbitrary SQL against a data source, via stdin or `--file PATH`
 
 ## [0.7.0] - 2026-05-27
 

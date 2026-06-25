@@ -1,9 +1,35 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::missing_panics_doc)]
 
+//! Query execution and ad-hoc SQL.
+//!
+//! By default `execute ID` runs the local `queries/<id>.sql` through Redash's
+//! schema-less ad-hoc endpoint (`POST /api/query_results`); `--remote` runs the
+//! server-stored SQL via `POST /api/queries/{id}/results`; `--file`/stdin runs
+//! arbitrary SQL with no tracked query.
+//!
+//! Parameter-rendering parity: the ad-hoc endpoint has no parameter schema, so
+//! any rendering Redash's frontend does from the schema must be replicated here
+//! before sending. Verified empirically (raw ad-hoc vs. a stored query, same SQL
+//! + params) and against the Redash source — only two steps need replication:
+//! - multi-value lists, joined client-side (`render_multi_value_parameters`)
+//! - dynamic `d_*` dates, resolved client-side (see [`super::dynamic_dates`])
+//!
+//! Everything else already matches the stored path and needs no client work:
+//! scalar coercion (`number`/`text`/`date`/single `enum`), `date-range` objects
+//! (`{start,end}`, the canonical form on both endpoints), and string escaping
+//! (neither endpoint escapes). The ad-hoc endpoint also does no parameter-name
+//! validation, so unknown `--param` names are caught by `warn_unknown_parameters`.
+//!
+//! The schema-driven rendering above (multi-value joins, `d_*` dates) only applies
+//! to the tracked paths, which have a parameter schema. Pure ad-hoc mode
+//! (`--file`/stdin) has no schema, so its `--param` values are sent verbatim — `d_*`
+//! tokens are not expanded and multi-value lists are not joined; inline such values
+//! directly in the SQL instead.
+
 use super::OutputFormat;
 use crate::api::RedashClient;
-use crate::models::{Parameter, QueryMetadata};
+use crate::models::{MultiValuesOptions, Parameter, QueryMetadata};
 use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
 use std::fs;
@@ -47,8 +73,7 @@ fn load_query_metadata_by_id(query_id: u64) -> Result<(QueryMetadata, String, St
             let metadata: QueryMetadata = serde_yaml::from_str(&yaml_content)
                 .context(format!("Failed to parse {}", path.display()))?;
 
-            let yaml_path = path.display().to_string();
-            let sql_path = yaml_path.replace(".yaml", ".sql");
+            let sql_path = path.with_extension("sql").display().to_string();
 
             if !Path::new(&sql_path).exists() {
                 bail!("SQL file not found: {sql_path}");
@@ -57,7 +82,7 @@ fn load_query_metadata_by_id(query_id: u64) -> Result<(QueryMetadata, String, St
             let sql =
                 fs::read_to_string(&sql_path).context(format!("Failed to read {sql_path}"))?;
 
-            return Ok((metadata, sql, yaml_path));
+            return Ok((metadata, sql, sql_path));
         }
     }
 
@@ -138,6 +163,8 @@ fn build_parameter_map(
     cli_params: &[(String, serde_json::Value)],
     interactive: bool,
 ) -> Result<Option<HashMap<String, serde_json::Value>>> {
+    warn_unknown_parameters(&metadata.options.parameters, cli_params);
+
     if metadata.options.parameters.is_empty() {
         return Ok(None);
     }
@@ -190,6 +217,26 @@ fn build_parameter_map(
     } else {
         Some(param_map)
     })
+}
+
+fn unknown_parameter_names<'a>(
+    parameters: &[Parameter],
+    cli_params: &'a [(String, serde_json::Value)],
+) -> Vec<&'a str> {
+    cli_params
+        .iter()
+        .filter(|(name, _)| !parameters.iter().any(|p| p.name == *name))
+        .map(|(name, _)| name.as_str())
+        .collect()
+}
+
+fn warn_unknown_parameters(parameters: &[Parameter], cli_params: &[(String, serde_json::Value)]) {
+    for name in unknown_parameter_names(parameters, cli_params) {
+        eprintln!(
+            "Warning: --param '{name}' does not match any parameter defined in this query; \
+             it will have no effect."
+        );
+    }
 }
 
 fn format_results_json(
@@ -271,46 +318,277 @@ fn format_results_table(result: &crate::models::QueryResult, limit: Option<usize
     output
 }
 
-pub async fn execute(
-    client: &RedashClient,
-    query_id: u64,
-    param_args: Vec<String>,
-    format: OutputFormat,
-    interactive: bool,
-    timeout_secs: u64,
-    limit_rows: Option<usize>,
-) -> Result<()> {
-    let (metadata, _sql, yaml_path) = load_query_metadata_by_id(query_id)?;
+fn plain_value(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
 
-    eprintln!("Executing query: {} - {}", metadata.id, metadata.name);
-    eprintln!("Source: {yaml_path}\n");
+fn join_multi_value(values: &[serde_json::Value], options: &MultiValuesOptions) -> String {
+    // Redash renders multi-value lists from prefix/suffix/separator only; it stores
+    // quoteCharacter but ignores it when joining. Mirror that so the local (ad-hoc) path
+    // matches the stored-query endpoint. Source of truth: upstream EnumParameter.js
+    // getExecutionValue (prefix/suffix default "", separator ",", quoteCharacter unused).
+    let prefix = options.prefix.as_deref().unwrap_or("");
+    let suffix = options.suffix.as_deref().unwrap_or("");
+    let separator = options.separator.as_deref().unwrap_or(",");
 
-    let cli_params: Vec<(String, serde_json::Value)> = param_args
+    values
         .iter()
-        .map(|arg| parse_parameter_arg(arg))
-        .collect::<Result<Vec<_>>>()?;
+        .map(|value| format!("{prefix}{}{suffix}", plain_value(value)))
+        .collect::<Vec<_>>()
+        .join(separator)
+}
 
-    let parameters = build_parameter_map(&metadata, &cli_params, interactive)?;
+fn render_multi_value_parameters(
+    metadata: &QueryMetadata,
+    parameters: Option<HashMap<String, serde_json::Value>>,
+) -> Option<HashMap<String, serde_json::Value>> {
+    let mut parameters = parameters?;
 
-    if let Some(ref params) = parameters {
+    for param in &metadata.options.parameters {
+        let Some(options) = &param.multi_values_options else {
+            continue;
+        };
+        let Some(serde_json::Value::Array(values)) = parameters.get(&param.name) else {
+            continue;
+        };
+
+        let joined = join_multi_value(values, options);
+        parameters.insert(param.name.clone(), serde_json::Value::String(joined));
+    }
+
+    Some(parameters)
+}
+
+fn params_from_cli(
+    cli_params: &[(String, serde_json::Value)],
+) -> Option<HashMap<String, serde_json::Value>> {
+    if cli_params.is_empty() {
+        None
+    } else {
+        Some(cli_params.iter().cloned().collect())
+    }
+}
+
+fn print_parameters(parameters: Option<&HashMap<String, serde_json::Value>>) {
+    if let Some(params) = parameters {
         eprintln!("Parameters:");
         for (name, value) in params {
             eprintln!("  {name} = {value}");
         }
         eprintln!();
     }
+}
 
-    let result = client
-        .execute_query_with_polling(query_id, parameters, timeout_secs, 500)
-        .await?;
+#[derive(Debug, PartialEq, Eq)]
+enum AdhocSource {
+    File(String),
+    Stdin,
+}
 
-    match format {
+fn adhoc_source(file: Option<&str>) -> AdhocSource {
+    match file {
+        Some("-") | None => AdhocSource::Stdin,
+        Some(path) => AdhocSource::File(path.to_string()),
+    }
+}
+
+fn read_sql<R: std::io::Read>(mut reader: R) -> Result<String> {
+    let mut sql = String::new();
+    reader
+        .read_to_string(&mut sql)
+        .context("Failed to read SQL from stdin")?;
+    if sql.trim().is_empty() {
+        bail!("No SQL provided on stdin.");
+    }
+    Ok(sql)
+}
+
+fn load_adhoc_sql(source: &AdhocSource) -> Result<(String, String)> {
+    match source {
+        AdhocSource::File(path) => {
+            let sql = fs::read_to_string(path).context(format!("Failed to read {path}"))?;
+            Ok((sql, path.clone()))
+        }
+        AdhocSource::Stdin => {
+            if std::io::stdin().is_terminal() {
+                bail!("No SQL on stdin. Pipe SQL in or pass --file <path>.");
+            }
+            let sql = read_sql(std::io::stdin().lock())?;
+            Ok((sql, "<stdin>".to_string()))
+        }
+    }
+}
+
+async fn execute_adhoc(
+    client: &RedashClient,
+    file: Option<&str>,
+    data_source_id: u64,
+    cli_params: &[(String, serde_json::Value)],
+    timeout_secs: u64,
+) -> Result<crate::models::QueryResult> {
+    let (sql, source_label) = load_adhoc_sql(&adhoc_source(file))?;
+
+    eprintln!("Source: {source_label} (ad-hoc, data source {data_source_id})\n");
+
+    let parameters = params_from_cli(cli_params);
+    print_parameters(parameters.as_ref());
+
+    client
+        .execute_adhoc_with_polling(&sql, data_source_id, parameters, timeout_secs, 500)
+        .await
+}
+
+async fn execute_tracked_query(
+    client: &RedashClient,
+    query_id: u64,
+    cli_params: &[(String, serde_json::Value)],
+    interactive: bool,
+    timeout_secs: u64,
+    remote: bool,
+) -> Result<crate::models::QueryResult> {
+    let (metadata, sql, sql_path) = load_query_metadata_by_id(query_id)?;
+
+    eprintln!("Executing query: {} - {}", metadata.id, metadata.name);
+
+    let parameters = build_parameter_map(&metadata, cli_params, interactive)?;
+
+    if remote {
+        eprintln!("Source: server query {} (remote)\n", metadata.id);
+        print_parameters(parameters.as_ref());
+        client
+            .execute_query_with_polling(query_id, parameters, timeout_secs, 500)
+            .await
+    } else {
+        eprintln!("Source: {sql_path} (local)\n");
+        // Render multi-value lists before printing so the displayed parameters match
+        // exactly what is sent to the ad-hoc endpoint (e.g. release,beta — not the array).
+        let parameters = render_multi_value_parameters(&metadata, parameters);
+        print_parameters(parameters.as_ref());
+        client
+            .execute_adhoc_with_polling(
+                &sql,
+                metadata.data_source_id,
+                parameters,
+                timeout_secs,
+                500,
+            )
+            .await
+    }
+}
+
+pub struct ExecuteArgs {
+    pub query_id: Option<u64>,
+    pub file: Option<String>,
+    pub data_source: Option<u64>,
+    pub param_args: Vec<String>,
+    pub format: OutputFormat,
+    pub interactive: bool,
+    pub timeout_secs: u64,
+    pub limit_rows: Option<usize>,
+    pub remote: bool,
+}
+
+// The validated execution mode. Resolving the flag combinations into this enum once keeps
+// the validation matrix in a single place and makes invalid combinations unrepresentable
+// downstream (e.g. ad-hoc always carries a concrete data source).
+enum ExecuteMode {
+    Adhoc {
+        file: Option<String>,
+        data_source_id: u64,
+    },
+    Tracked {
+        query_id: u64,
+        remote: bool,
+    },
+}
+
+fn resolve_mode(args: &ExecuteArgs) -> Result<ExecuteMode> {
+    if args.file.is_some() && args.query_id.is_some() {
+        bail!("Cannot combine a query ID with --file; choose one.");
+    }
+    if args.file.is_some() && args.remote {
+        bail!("--remote cannot be combined with --file; --file always runs ad-hoc SQL.");
+    }
+    if args.query_id.is_some() && args.data_source.is_some() {
+        bail!(
+            "--data-source cannot be combined with a query ID; it only applies to --file ad-hoc SQL."
+        );
+    }
+    if args.query_id.is_none() && args.remote {
+        bail!(
+            "--remote runs a tracked query's server-stored SQL; pass a query ID (e.g. stmo-cli execute 123 --remote)."
+        );
+    }
+
+    if let Some(query_id) = args.query_id {
+        return Ok(ExecuteMode::Tracked {
+            query_id,
+            remote: args.remote,
+        });
+    }
+
+    if args.file.is_some() || args.data_source.is_some() {
+        let data_source_id = args
+            .data_source
+            .context("ad-hoc execution requires --data-source <id> to run SQL")?;
+        return Ok(ExecuteMode::Adhoc {
+            file: args.file.clone(),
+            data_source_id,
+        });
+    }
+
+    bail!(
+        "No query specified. Provide a query ID (stmo-cli execute 123) \
+         or run ad-hoc SQL with --file <path> --data-source <id> (or pipe SQL via stdin)."
+    );
+}
+
+pub async fn execute(client: &RedashClient, args: ExecuteArgs) -> Result<()> {
+    let mode = resolve_mode(&args)?;
+
+    let cli_params: Vec<(String, serde_json::Value)> = args
+        .param_args
+        .iter()
+        .map(|arg| parse_parameter_arg(arg))
+        .collect::<Result<Vec<_>>>()?;
+
+    let result = match mode {
+        ExecuteMode::Adhoc {
+            file,
+            data_source_id,
+        } => {
+            execute_adhoc(
+                client,
+                file.as_deref(),
+                data_source_id,
+                &cli_params,
+                args.timeout_secs,
+            )
+            .await?
+        }
+        ExecuteMode::Tracked { query_id, remote } => {
+            execute_tracked_query(
+                client,
+                query_id,
+                &cli_params,
+                args.interactive,
+                args.timeout_secs,
+                remote,
+            )
+            .await?
+        }
+    };
+
+    match args.format {
         OutputFormat::Json => {
-            let json = format_results_json(&result, limit_rows)?;
+            let json = format_results_json(&result, args.limit_rows)?;
             println!("{json}");
         }
         OutputFormat::Table => {
-            let table = format_results_table(&result, limit_rows);
+            let table = format_results_table(&result, args.limit_rows);
             println!("{table}");
         }
     }
@@ -612,5 +890,130 @@ mod tests {
         let result = build_parameter_map(&metadata, &cli_params, true).unwrap();
         let map = result.unwrap();
         assert_eq!(map["p"], serde_json::json!("provided"));
+    }
+
+    #[test]
+    fn test_unknown_parameter_names_flags_only_unmatched() {
+        let metadata = make_metadata_with_param("days", None);
+        let cli_params = vec![
+            ("days".to_string(), serde_json::json!(7)),
+            ("dayz".to_string(), serde_json::json!(7)),
+            ("channel".to_string(), serde_json::json!("beta")),
+        ];
+        let unknown = unknown_parameter_names(&metadata.options.parameters, &cli_params);
+        assert_eq!(unknown, vec!["dayz", "channel"]);
+    }
+
+    #[test]
+    fn test_unknown_parameter_names_empty_when_all_match() {
+        let metadata = make_metadata_with_param("days", None);
+        let cli_params = vec![("days".to_string(), serde_json::json!(7))];
+        let unknown = unknown_parameter_names(&metadata.options.parameters, &cli_params);
+        assert!(unknown.is_empty());
+    }
+
+    fn make_metadata_with_multi_value_param(name: &str) -> QueryMetadata {
+        use crate::models::{MultiValuesOptions, Parameter, QueryOptions};
+        QueryMetadata {
+            id: 1,
+            name: "test".to_string(),
+            description: None,
+            data_source_id: 1,
+            user_id: None,
+            schedule: None,
+            options: QueryOptions {
+                parameters: vec![Parameter {
+                    name: name.to_string(),
+                    title: name.to_string(),
+                    param_type: "enum".to_string(),
+                    value: None,
+                    enum_options: Some("nightly\nbeta\nrelease".to_string()),
+                    query_id: None,
+                    multi_values_options: Some(MultiValuesOptions {
+                        prefix: Some("'".to_string()),
+                        suffix: Some("'".to_string()),
+                        separator: Some(",".to_string()),
+                        quote_character: None,
+                    }),
+                }],
+            },
+            visualizations: vec![],
+            tags: None,
+        }
+    }
+
+    #[test]
+    fn test_render_multi_value_parameters_quotes_and_joins_list() {
+        let metadata = make_metadata_with_multi_value_param("channels");
+        let mut params = HashMap::new();
+        params.insert(
+            "channels".to_string(),
+            serde_json::json!(["nightly", "beta"]),
+        );
+
+        let rendered = render_multi_value_parameters(&metadata, Some(params)).unwrap();
+        assert_eq!(
+            rendered["channels"],
+            serde_json::Value::String("'nightly','beta'".to_string())
+        );
+    }
+
+    #[test]
+    fn test_render_multi_value_parameters_leaves_scalar_untouched() {
+        let metadata = make_metadata_with_multi_value_param("channels");
+        let mut params = HashMap::new();
+        params.insert("channels".to_string(), serde_json::json!("nightly"));
+
+        let rendered = render_multi_value_parameters(&metadata, Some(params)).unwrap();
+        assert_eq!(rendered["channels"], serde_json::json!("nightly"));
+    }
+
+    #[test]
+    fn test_render_multi_value_parameters_ignores_params_without_options() {
+        let metadata = make_metadata_with_param("days", None);
+        let mut params = HashMap::new();
+        params.insert("days".to_string(), serde_json::json!(["1", "2"]));
+
+        let rendered = render_multi_value_parameters(&metadata, Some(params)).unwrap();
+        assert_eq!(rendered["days"], serde_json::json!(["1", "2"]));
+    }
+
+    #[test]
+    fn test_join_multi_value_ignores_quote_character() {
+        // Redash ignores quoteCharacter when rendering, defaulting prefix/suffix to empty.
+        let options = MultiValuesOptions {
+            prefix: None,
+            suffix: None,
+            separator: None,
+            quote_character: Some("\"".to_string()),
+        };
+        let values = vec![serde_json::json!("a"), serde_json::json!("b")];
+        assert_eq!(join_multi_value(&values, &options), "a,b");
+    }
+
+    #[test]
+    fn test_adhoc_source_stdin_for_dash_and_none() {
+        assert_eq!(adhoc_source(Some("-")), AdhocSource::Stdin);
+        assert_eq!(adhoc_source(None), AdhocSource::Stdin);
+    }
+
+    #[test]
+    fn test_adhoc_source_file_for_path() {
+        assert_eq!(
+            adhoc_source(Some("scratch.sql")),
+            AdhocSource::File("scratch.sql".to_string())
+        );
+    }
+
+    #[test]
+    fn test_read_sql_returns_content() {
+        let sql = read_sql(std::io::Cursor::new("SELECT 1")).unwrap();
+        assert_eq!(sql, "SELECT 1");
+    }
+
+    #[test]
+    fn test_read_sql_bails_on_empty() {
+        let err = read_sql(std::io::Cursor::new("   \n\t")).unwrap_err();
+        assert!(err.to_string().contains("No SQL provided on stdin"));
     }
 }
