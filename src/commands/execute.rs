@@ -137,6 +137,7 @@ fn build_parameter_map(
     metadata: &QueryMetadata,
     cli_params: &[(String, serde_json::Value)],
     interactive: bool,
+    has_tty: bool,
 ) -> Result<Option<HashMap<String, serde_json::Value>>> {
     if metadata.options.parameters.is_empty() {
         return Ok(None);
@@ -153,8 +154,6 @@ fn build_parameter_map(
             .map_or_else(|| value.clone(), |p| coerce_for_type(value, &p.param_type));
         param_map.insert(name.clone(), coerced);
     }
-
-    let has_tty = std::io::stdin().is_terminal();
 
     for param in &metadata.options.parameters {
         if !param_map.contains_key(&param.name) {
@@ -290,7 +289,8 @@ pub async fn execute(
         .map(|arg| parse_parameter_arg(arg))
         .collect::<Result<Vec<_>>>()?;
 
-    let parameters = build_parameter_map(&metadata, &cli_params, interactive)?;
+    let has_tty = std::io::stdin().is_terminal();
+    let parameters = build_parameter_map(&metadata, &cli_params, interactive, has_tty)?;
 
     if let Some(ref params) = parameters {
         eprintln!("Parameters:");
@@ -584,7 +584,7 @@ mod tests {
     fn test_build_parameter_map_coerces_text_param() {
         let metadata = make_metadata_with_param("days", None);
         let cli_params = vec![("days".to_string(), serde_json::json!(90))];
-        let result = build_parameter_map(&metadata, &cli_params, false)
+        let result = build_parameter_map(&metadata, &cli_params, false, false)
             .unwrap()
             .unwrap();
         assert_eq!(result["days"], serde_json::Value::String("90".to_string()));
@@ -593,7 +593,7 @@ mod tests {
     #[test]
     fn test_build_parameter_map_interactive_no_tty_uses_default() {
         let metadata = make_metadata_with_param("p", Some(serde_json::json!("default_val")));
-        let result = build_parameter_map(&metadata, &[], true).unwrap();
+        let result = build_parameter_map(&metadata, &[], true, false).unwrap();
         let map = result.unwrap();
         assert_eq!(map["p"], serde_json::json!("default_val"));
     }
@@ -601,7 +601,7 @@ mod tests {
     #[test]
     fn test_build_parameter_map_interactive_no_tty_no_default_bails() {
         let metadata = make_metadata_with_param("p", None);
-        let err = build_parameter_map(&metadata, &[], true).unwrap_err();
+        let err = build_parameter_map(&metadata, &[], true, false).unwrap_err();
         assert!(err.to_string().contains("--param p="));
     }
 
@@ -609,8 +609,45 @@ mod tests {
     fn test_build_parameter_map_interactive_no_tty_cli_param_overrides() {
         let metadata = make_metadata_with_param("p", None);
         let cli_params = vec![("p".to_string(), serde_json::json!("provided"))];
-        let result = build_parameter_map(&metadata, &cli_params, true).unwrap();
+        let result = build_parameter_map(&metadata, &cli_params, true, false).unwrap();
         let map = result.unwrap();
         assert_eq!(map["p"], serde_json::json!("provided"));
+    }
+
+    #[test]
+    fn test_build_parameter_map_interactive_tty_cli_param_skips_prompt() {
+        let metadata = make_metadata_with_param("p", None);
+        let cli_params = vec![("p".to_string(), serde_json::json!("provided"))];
+        // interactive + has_tty would prompt for a missing param (blocking on
+        // stdin); supplying it via CLI must satisfy it without prompting.
+        let result = build_parameter_map(&metadata, &cli_params, true, true).unwrap();
+        let map = result.unwrap();
+        assert_eq!(map["p"], serde_json::json!("provided"));
+    }
+
+    #[test]
+    fn test_build_parameter_map_interactive_tty_cli_param_coerces() {
+        let metadata = make_metadata_with_param("days", None);
+        let cli_params = vec![("days".to_string(), serde_json::json!(90))];
+        let result = build_parameter_map(&metadata, &cli_params, true, true)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result["days"], serde_json::Value::String("90".to_string()));
+    }
+
+    #[test]
+    fn test_build_parameter_map_non_interactive_tty_uses_default() {
+        let metadata = make_metadata_with_param("p", Some(serde_json::json!("default_val")));
+        // has_tty alone must not trigger prompting when not interactive.
+        let result = build_parameter_map(&metadata, &[], false, true).unwrap();
+        let map = result.unwrap();
+        assert_eq!(map["p"], serde_json::json!("default_val"));
+    }
+
+    #[test]
+    fn test_build_parameter_map_non_interactive_tty_no_default_bails() {
+        let metadata = make_metadata_with_param("p", None);
+        let err = build_parameter_map(&metadata, &[], false, true).unwrap_err();
+        assert!(err.to_string().contains("Missing required parameter"));
     }
 }
