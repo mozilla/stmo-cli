@@ -4,7 +4,7 @@ Redash CLI that gives Claude Code direct access to sql.telemetry.mozilla.org —
 
 ## Quick Reference
 
-**Commands**: `discover [--search TEXT] [--limit N]` `init` `fetch` `deploy` `execute` `data-sources` `archive` `unarchive` `dashboards`
+**Commands**: `discover [--search TEXT] [--limit N]` `init` `fetch` `deploy` `execute [ID] [--remote] [[--file PATH|-] --data-source ID]` `data-sources` `archive` `unarchive` `dashboards`
 **Env Vars**: `REDASH_API_KEY` (required), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
 ## Key Constraints
@@ -31,7 +31,7 @@ src/
     ├── init.rs          # Create directory
     ├── fetch.rs         # Download queries, slugify()
     ├── deploy.rs        # Upload changes
-    ├── execute.rs       # Execute queries
+    ├── execute.rs       # Execute queries (see module doc for ad-hoc param-rendering parity)
     ├── datasources.rs   # List/explore data sources
     ├── archive.rs       # Archive/unarchive queries
     └── dashboards.rs    # Dashboard management
@@ -51,7 +51,7 @@ src/
 **Query**: list_my_queries, get_query, fetch_all_queries, create_query, create_or_update_query
 **Search**: search_queries(q, limit), search_dashboards(q, limit); `base_url()` accessor
 **Visualization**: create_visualization, update_visualization
-**Execution**: refresh_query, poll_job, get_query_result, execute_query_with_polling
+**Execution**: refresh_query, poll_job, get_query_result, execute_query_with_polling, refresh_adhoc_query, get_adhoc_query_result, execute_adhoc_with_polling
 **Data Source**: list_data_sources, get_data_source, get_data_source_schema
 **Archive**: archive_query, unarchive_query
 **Widget**: create_widget, update_widget, delete_widget
