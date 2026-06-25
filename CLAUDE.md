@@ -10,6 +10,7 @@ Redash CLI that gives Claude Code direct access to sql.telemetry.mozilla.org —
 ## Key Constraints
 
 - All clippy::pedantic warnings = errors (pre-commit enforced)
+- `cargo fmt` must pass (enforced pre-commit and in CI)
 - No docstrings (user preference)
 - Borrowed strings preferred (`&str` vs `String`)
 - Break complex logic into well-named functions
