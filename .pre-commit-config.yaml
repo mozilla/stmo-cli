@@ -1,6 +1,12 @@
 repos:
 - repo: local
   hooks:
+  - id: cargo-fmt
+    name: cargo fmt
+    entry: cargo fmt -- --check
+    language: system
+    types: [rust]
+    pass_filenames: false
   - id: cargo-clippy
     name: cargo clippy (pedantic)
     entry: cargo clippy --all-targets --all-features -- -W clippy::pedantic -D warnings
