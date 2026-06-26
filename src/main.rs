@@ -130,6 +130,39 @@ enum Commands {
         command: DashboardCommands,
     },
 
+    #[command(
+        about = "Set or clear a query's refresh schedule (updates local YAML; run 'deploy' to push to Redash)",
+        long_about = "Set or clear a query's refresh schedule.\n\nUpdates the schedule field in each query's local YAML file. The change is not pushed to Redash until you run 'stmo-cli deploy'.\n\nExamples:\n  stmo-cli schedule 123 456 --interval 86400 --time 07:15\n  stmo-cli schedule 123 --clear"
+    )]
+    Schedule {
+        #[arg(help = "Query IDs to update (e.g., 123 456 789)")]
+        query_ids: Vec<u64>,
+
+        #[arg(
+            long,
+            help = "Refresh interval in seconds (e.g., 86400 for daily)",
+            conflicts_with = "clear"
+        )]
+        interval: Option<u64>,
+
+        #[arg(
+            long,
+            help = "Time of day for the refresh in HH:MM format (e.g., 07:15)",
+            requires = "interval"
+        )]
+        time: Option<String>,
+
+        #[arg(
+            long,
+            help = "Day of week for the refresh (0=Sunday through 6=Saturday)",
+            requires = "interval"
+        )]
+        day_of_week: Option<String>,
+
+        #[arg(long, help = "Clear the refresh schedule", conflicts_with = "interval")]
+        clear: bool,
+    },
+
     #[command(about = "Update stmo-cli to the latest version")]
     Update,
 }
@@ -174,6 +207,7 @@ enum DashboardCommands {
     },
 }
 
+#[allow(clippy::too_many_lines)]
 async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
     match command {
         Commands::Discover { search, limit } => {
@@ -249,6 +283,26 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
             }
             commands::archive::unarchive(&client, query_ids).await?;
         }
+        Commands::Schedule {
+            query_ids,
+            interval,
+            time,
+            day_of_week,
+            clear,
+        } => {
+            if query_ids.is_empty() {
+                anyhow::bail!(
+                    "No query IDs specified. Provide query IDs to update.\n\nExamples:\n  stmo-cli schedule 123 456 --interval 86400 --time 07:15\n  stmo-cli schedule 123 --clear"
+                );
+            }
+            commands::schedule::schedule(
+                &query_ids,
+                interval,
+                time.as_deref(),
+                day_of_week.as_deref(),
+                clear,
+            )?;
+        }
         Commands::Dashboards { command } => match command {
             DashboardCommands::Discover => commands::dashboards::discover(&client).await?,
             DashboardCommands::Fetch { slugs } => {
@@ -285,6 +339,7 @@ discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all
 data-sources [ID] [--schema] [--refresh] | archive IDs | archive --cleanup | unarchive IDs | init | update
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
 
+schedule IDs --interval SECS [--time HH:MM] [--day-of-week N] | schedule IDs --clear (writes YAML; run deploy to push)
 deploy: uses git diff by default; --all required outside a git repo
 archive IDs: archives on server + deletes local | archive --cleanup: deletes local only for already-archived (does NOT archive on server)
 dashboards: addressed by slug not ID; only favorited dashboards appear in dashboards discover

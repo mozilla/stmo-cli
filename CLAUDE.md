@@ -4,7 +4,7 @@ Redash CLI that gives Claude Code direct access to sql.telemetry.mozilla.org —
 
 ## Quick Reference
 
-**Commands**: `discover [--search TEXT] [--limit N]` `init` `fetch` `deploy` `execute` `data-sources` `archive` `unarchive` `dashboards`
+**Commands**: `discover [--search TEXT] [--limit N]` `init` `fetch` `deploy` `execute` `data-sources` `archive` `unarchive` `dashboards` `schedule`
 **Env Vars**: `REDASH_API_KEY` (required), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
 ## Key Constraints
@@ -35,6 +35,7 @@ src/
     ├── dynamic_dates.rs # Resolve d_* date/range tokens client-side (port of Redash frontend)
     ├── datasources.rs   # List/explore data sources
     ├── archive.rs       # Archive/unarchive queries
+    ├── schedule.rs      # Set/clear query refresh schedules (local YAML only; deploy to push)
     └── dashboards.rs    # Dashboard management
 ```
 

@@ -7,6 +7,7 @@ pub mod dynamic_dates;
 pub mod execute;
 pub mod fetch;
 pub mod init;
+pub mod schedule;
 pub mod update;
 
 use anyhow::{Result, bail};

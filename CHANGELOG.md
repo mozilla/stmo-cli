@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Features
+- `schedule <IDs> --interval <SECONDS> [--time HH:MM] [--day-of-week N]`: set a query's refresh schedule in the local YAML (run `deploy` to push to Redash)
+- `schedule <IDs> --clear`: remove the refresh schedule from the local YAML
 - `discover --search`/`-q`: full-text search across all queries and dashboards (with `--limit`, default 50)
 - `execute` now resolves dynamic date tokens client-side
 

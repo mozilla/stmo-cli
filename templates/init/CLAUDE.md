@@ -5,7 +5,7 @@ This repository contains version-controlled Redash queries and dashboards manage
 ## Quick Reference
 
 **Install**: `cargo install stmo-cli`
-**Commands**: `discover [--search TEXT] [--limit N]` `fetch` `deploy` `execute` `data-sources` `archive` `unarchive` `dashboards`
+**Commands**: `discover [--search TEXT] [--limit N]` `fetch` `deploy` `execute` `data-sources` `archive` `unarchive` `dashboards` `schedule`
 **File Naming**: `queries/{id}-{slug}.sql` + `queries/{id}-{slug}.yaml`, `dashboards/{id}-{slug}.yaml`
 **Env Vars**: `REDASH_API_KEY` (required), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
@@ -34,6 +34,7 @@ To restore: `stmo-cli unarchive <id> && stmo-cli fetch <id>`
 **data-sources**: List sources, `<id> --schema` for tables
 **archive**: Archive queries + delete local (`<ids>` or `--cleanup`)
 **unarchive**: Restore archived queries (`<ids>`)
+**schedule**: Set or clear a query's refresh schedule in the local YAML (`--interval SECS [--time HH:MM] [--day-of-week N]` or `--clear`); run `deploy` afterwards to push to Redash
 
 ### Dashboards
 **dashboards discover**: List your favorite dashboards (IDs + names + slugs)
