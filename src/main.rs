@@ -403,15 +403,13 @@ fn is_llm_environment() -> bool {
         || std::env::var("OPENCODE").is_ok()
 }
 
-fn print_llm_help() {
-    print!(
-        r#"stmo-cli — Redash CLI for sql.telemetry.mozilla.org. Explore data sources, run queries, deploy dashboards.
+const LLM_HELP: &str = r#"stmo-cli — Redash CLI for sql.telemetry.mozilla.org. Explore data sources, run queries, deploy dashboards.
 REDASH_API_KEY required | REDASH_URL optional (default: https://sql.telemetry.mozilla.org)
 API key: https://sql.telemetry.mozilla.org/users/me → API Key section
 
-discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N]
+discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N] [--timeout SECS]
 execute --data-source ID [--file PATH|-] [--param k=v]...: ad-hoc SQL from a file or stdin ('-' or omit --file = read stdin), no tracked query created (no schema, so no d_* dates or multi-value expansion — inline values in the SQL)
-data-sources [ID] [--schema] [--refresh] | archive IDs | archive --cleanup | unarchive IDs | init | update
+data-sources [ID] [--schema] [--refresh] [--format table|json] | archive IDs | archive --cleanup | unarchive IDs | init | update
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
 snippets list|fetch [IDs] [--all]|deploy [IDs] [--all]|delete IDs
 
@@ -429,8 +427,10 @@ enumOptions: use YAML multiline (|-), NOT escaped \n or deploy fails
 Multi-value enum params require JSON array: --param channels='["release","beta"]'
 Dynamic date tokens resolved client-side (tracked queries only): d_now/d_yesterday (date types); d_today/d_last_7_days/d_last_month/d_this_week/... (range types)
 JSON export: stmo-cli execute ID --format json 2>/dev/null > data.json
-"#
-    );
+"#;
+
+fn print_llm_help() {
+    print!("{LLM_HELP}");
 }
 
 #[tokio::main]
@@ -478,4 +478,43 @@ async fn main() -> Result<()> {
     run_command(client, cli.command).await?;
     version_checker.print_warning();
     Ok(())
+}
+
+#[cfg(test)]
+mod llm_help_guard {
+    use super::{Cli, LLM_HELP};
+    use clap::CommandFactory;
+
+    fn collect_names(cmd: &clap::Command, names: &mut Vec<String>) {
+        for sub in cmd.get_subcommands() {
+            names.push(sub.get_name().to_string());
+            for arg in sub.get_arguments() {
+                if let Some(long) = arg.get_long()
+                    && long != "help"
+                    && long != "version"
+                {
+                    names.push(format!("--{long}"));
+                }
+            }
+            collect_names(sub, names);
+        }
+    }
+
+    #[test]
+    fn llm_help_mentions_every_subcommand_and_flag() {
+        let cmd = Cli::command();
+        let mut names = Vec::new();
+        collect_names(&cmd, &mut names);
+
+        let missing: Vec<&String> = names
+            .iter()
+            .filter(|name| !LLM_HELP.contains(name.as_str()))
+            .collect();
+
+        assert!(
+            missing.is_empty(),
+            "LLM_HELP is missing these subcommands/flags: {missing:?}\n\
+             Update the LLM_HELP const in src/main.rs to document them."
+        );
+    }
 }
