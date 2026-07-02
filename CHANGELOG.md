@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixes
+- `execute ID`: deploy local changes automatically before executing, so it never silently runs a stale server copy (previously it always ran whatever was last deployed, ignoring unsynced local edits)
+
 ## [0.8.0] - 2026-07-02
 
 ### Features

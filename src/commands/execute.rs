@@ -289,6 +289,44 @@ fn format_results_table(result: &crate::models::QueryResult, limit: Option<usize
     output
 }
 
+// Compare local vs. server on everything `deploy` would push, so `execute` never silently
+// runs a stale server copy. SQL is compared byte-for-byte, matching how `fetch`/`deploy`
+// round-trip it without modification.
+fn tracked_query_differs(
+    local_sql: &str,
+    local_metadata: &QueryMetadata,
+    server: &crate::models::Query,
+) -> bool {
+    local_sql != server.sql
+        || local_metadata.name != server.name
+        || local_metadata.data_source_id != server.data_source_id
+        || serde_json::to_value(&local_metadata.options).ok()
+            != serde_json::to_value(&server.options).ok()
+}
+
+async fn sync_if_changed(
+    client: &RedashClient,
+    query_id: u64,
+    local_sql: &str,
+    local_metadata: &QueryMetadata,
+) -> Result<()> {
+    let server = client.get_query(query_id).await?;
+
+    if !tracked_query_differs(local_sql, local_metadata, &server) {
+        return Ok(());
+    }
+
+    eprintln!("Local changes detected, deploying query {query_id}...");
+    super::deploy::deploy_one(client, query_id, &local_metadata.name).await?;
+    eprintln!("Deployed.");
+
+    Ok(())
+}
+
+fn tracked_source_line(query_id: u64) -> String {
+    format!("server-stored query {query_id} (kept in sync with your local copy)")
+}
+
 pub async fn execute(
     client: &RedashClient,
     query_id: u64,
@@ -298,10 +336,12 @@ pub async fn execute(
     timeout_secs: u64,
     limit_rows: Option<usize>,
 ) -> Result<()> {
-    let (metadata, _sql, yaml_path) = load_query_metadata_by_id(query_id)?;
+    let (metadata, sql, _yaml_path) = load_query_metadata_by_id(query_id)?;
+
+    sync_if_changed(client, query_id, &sql, &metadata).await?;
 
     eprintln!("Executing query: {} - {}", metadata.id, metadata.name);
-    eprintln!("Source: {yaml_path}\n");
+    eprintln!("Source: {}\n", tracked_source_line(metadata.id));
 
     let cli_params: Vec<(String, serde_json::Value)> = param_args
         .iter()
@@ -341,7 +381,91 @@ pub async fn execute(
 #[allow(clippy::missing_errors_doc)]
 mod tests {
     use super::*;
-    use crate::models::{Column, QueryResult, QueryResultData};
+    use crate::models::{Column, QueryOptions, QueryResult, QueryResultData};
+
+    fn make_query_metadata(name: &str, data_source_id: u64) -> QueryMetadata {
+        QueryMetadata {
+            id: 1,
+            name: name.to_string(),
+            description: None,
+            data_source_id,
+            user_id: None,
+            schedule: None,
+            options: QueryOptions { parameters: vec![] },
+            visualizations: vec![],
+            tags: None,
+        }
+    }
+
+    fn make_server_query(sql: &str, name: &str, data_source_id: u64) -> crate::models::Query {
+        crate::models::Query {
+            id: 1,
+            name: name.to_string(),
+            description: None,
+            sql: sql.to_string(),
+            data_source_id,
+            user: None,
+            schedule: None,
+            options: QueryOptions { parameters: vec![] },
+            visualizations: vec![],
+            tags: None,
+            is_archived: false,
+            is_draft: false,
+            updated_at: String::new(),
+            created_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_tracked_query_differs_false_when_identical() {
+        let metadata = make_query_metadata("Q", 1);
+        let server = make_server_query("SELECT 1", "Q", 1);
+        assert!(!tracked_query_differs("SELECT 1", &metadata, &server));
+    }
+
+    #[test]
+    fn test_tracked_query_differs_true_when_sql_differs() {
+        let metadata = make_query_metadata("Q", 1);
+        let server = make_server_query("SELECT 1", "Q", 1);
+        assert!(tracked_query_differs("SELECT 2", &metadata, &server));
+    }
+
+    #[test]
+    fn test_tracked_query_differs_true_when_name_differs() {
+        let metadata = make_query_metadata("Local Name", 1);
+        let server = make_server_query("SELECT 1", "Server Name", 1);
+        assert!(tracked_query_differs("SELECT 1", &metadata, &server));
+    }
+
+    #[test]
+    fn test_tracked_query_differs_true_when_data_source_id_differs() {
+        let metadata = make_query_metadata("Q", 1);
+        let server = make_server_query("SELECT 1", "Q", 2);
+        assert!(tracked_query_differs("SELECT 1", &metadata, &server));
+    }
+
+    #[test]
+    fn test_tracked_query_differs_true_when_parameters_differ() {
+        let mut metadata = make_query_metadata("Q", 1);
+        metadata.options.parameters.push(Parameter {
+            name: "p".to_string(),
+            title: "P".to_string(),
+            param_type: "text".to_string(),
+            value: None,
+            enum_options: None,
+            query_id: None,
+            multi_values_options: None,
+        });
+        let server = make_server_query("SELECT 1", "Q", 1);
+        assert!(tracked_query_differs("SELECT 1", &metadata, &server));
+    }
+
+    #[test]
+    fn test_tracked_source_line_identifies_server_stored_query() {
+        let line = tracked_source_line(121_870);
+        assert!(line.contains("121870"));
+        assert!(line.contains("server-stored"));
+    }
 
     #[test]
     fn test_parse_parameter_arg_string() {
