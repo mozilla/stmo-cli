@@ -154,3 +154,8 @@ Group entries under `### Features` and `### Fixes`.
 8. Add changelog to release: `gh release edit X.Y.Z --notes "..."`
 9. Publish to crates.io: `cargo publish`
 10. Verify: `cargo binstall --dry-run stmo-cli`
+11. Sync the firefox skill: run `scripts/sync-firefox-skill.sh <firefox-checkout> [bug-number]`
+    (or invoke the `update-stmo-skill` skill) to update
+    `mozilla-firefox/firefox/.claude/skills/stmo/SKILL.md` and prepare a moz-phab
+    submission. See `.claude/skills/stmo/SKILL.md` (vendored canonical copy) and
+    `.claude/skills/update-stmo-skill/SKILL.md`.
