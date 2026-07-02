@@ -5,7 +5,7 @@ This repository contains version-controlled Redash queries and dashboards manage
 ## Quick Reference
 
 **Install**: `cargo install stmo-cli`
-**Commands**: `discover [--search TEXT] [--limit N]` `fetch` `deploy` `execute` `data-sources` `archive` `unarchive` `dashboards` `schedule`
+**Commands**: `discover [--search TEXT] [--limit N]` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule`
 **File Naming**: `queries/{id}-{slug}.sql` + `queries/{id}-{slug}.yaml`, `dashboards/{id}-{slug}.yaml`
 **Env Vars**: `REDASH_API_KEY` (required), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
@@ -24,13 +24,19 @@ This repository contains version-controlled Redash queries and dashboards manage
 
 To restore: `stmo-cli unarchive <id> && stmo-cli fetch <id>`
 
+**Scratch/exploratory SQL that doesn't need to be a tracked query**: skip fetch/execute/archive
+entirely — `echo "SELECT ..." | stmo-cli execute --data-source <id>` runs arbitrary SQL
+directly against a data source and creates no query, so there's nothing to clean up. Has no
+parameter schema, so inline any values directly in the SQL.
+
 ## Commands
 
 ### Queries
 **discover**: List your own queries (IDs + names). With `--search TEXT` (short: `-q`), performs a full-text search across all queries and dashboards; `--limit N` caps results per section (default 50)
 **fetch**: Download queries (`--all` for tracked, or `<ids>`)
 **deploy**: Upload changes (no args = git-changed files only or all if not in a git repo, `--all` for everything, or `<ids>`)
-**execute**: Run query (`--param key=val`, `--format table|json`, `--interactive`)
+**execute**: Run a tracked query by ID (deploys local changes first if they differ from the server); `--param key=val`, `--format table|json`, `--interactive`
+**execute --data-source ID**: Run ad-hoc SQL (stdin or `--file PATH`) against a data source, creating no tracked query — no parameter schema, so inline values directly in the SQL
 **data-sources**: List sources, `<id> --schema` for tables
 **archive**: Archive queries + delete local (`<ids>` or `--cleanup`)
 **unarchive**: Restore archived queries (`<ids>`)

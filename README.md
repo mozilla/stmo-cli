@@ -97,6 +97,29 @@ stmo-cli deploy --all # Deploy all queries
 
 **Warning**: This force overwrites the queries in Redash. Git is the source of truth.
 
+### Execute Queries
+
+```bash
+stmo-cli execute 123                                       # Run query 123 (deploys local changes first, if any)
+stmo-cli execute 123 --param start_date=2026-06-15
+stmo-cli execute 123 --param channels='["release","beta"]' # Multi-value enum as JSON
+stmo-cli data-sources                                      # List data sources
+echo 'SELECT 1' | stmo-cli execute --data-source 321       # Run arbitrary SQL against a data source
+stmo-cli execute --data-source 321 --file scratch.sql
+```
+
+`execute ID` deploys the local `.sql`/`.yaml` first if it differs from what's stored on the
+server (SQL, name, data source, or parameters), so it never silently runs a stale copy — then
+it always runs the up-to-date server-stored query.
+
+`execute --data-source ID` runs ad-hoc SQL directly against a data source without creating a
+tracked query — useful for one-off exploration. It has no parameter schema, so multi-value
+parameters can't be expanded for you — inline the values directly in the SQL (e.g.
+`IN ('release', 'beta')`).
+
+Parameters are passed as `--param name=value` (repeatable). Values are parsed as JSON when
+possible, anything that isn't valid JSON is treated as a plain string.
+
 ## File Structure
 
 ```

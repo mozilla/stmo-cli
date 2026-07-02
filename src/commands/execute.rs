@@ -193,10 +193,10 @@ fn build_parameter_map(
     })
 }
 
-// Resolve `d_*` tokens (from `--param` or a stored parameter default) before either
-// execution path runs. The stored-query API rejects raw `d_*` and the ad-hoc API passes
-// it through literally — only Redash's frontend expands them — so this must apply to both
-// the local and `--remote` paths. See `dynamic_dates`.
+// Resolve `d_*` tokens (from `--param` or a stored parameter default) before executing a
+// tracked query. The stored-query API rejects raw `d_*` values — only Redash's frontend
+// expands them — so this must run client-side first. See `dynamic_dates`. Ad-hoc execution
+// has no parameter schema and sends `--param` values verbatim, so this does not apply there.
 fn resolve_dynamic_dates(
     parameters: &[Parameter],
     param_map: &mut HashMap<String, serde_json::Value>,
@@ -327,15 +327,92 @@ fn tracked_source_line(query_id: u64) -> String {
     format!("server-stored query {query_id} (kept in sync with your local copy)")
 }
 
-pub async fn execute(
+fn params_from_cli(
+    cli_params: &[(String, serde_json::Value)],
+) -> Option<HashMap<String, serde_json::Value>> {
+    if cli_params.is_empty() {
+        None
+    } else {
+        Some(cli_params.iter().cloned().collect())
+    }
+}
+
+fn print_parameters(parameters: Option<&HashMap<String, serde_json::Value>>) {
+    if let Some(params) = parameters {
+        eprintln!("Parameters:");
+        for (name, value) in params {
+            eprintln!("  {name} = {value}");
+        }
+        eprintln!();
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum AdhocSource {
+    File(String),
+    Stdin,
+}
+
+fn adhoc_source(file: Option<&str>) -> AdhocSource {
+    match file {
+        Some("-") | None => AdhocSource::Stdin,
+        Some(path) => AdhocSource::File(path.to_string()),
+    }
+}
+
+fn read_sql<R: std::io::Read>(mut reader: R) -> Result<String> {
+    let mut sql = String::new();
+    reader
+        .read_to_string(&mut sql)
+        .context("Failed to read SQL from stdin")?;
+    if sql.trim().is_empty() {
+        bail!("No SQL provided on stdin.");
+    }
+    Ok(sql)
+}
+
+fn load_adhoc_sql(source: &AdhocSource) -> Result<(String, String)> {
+    match source {
+        AdhocSource::File(path) => {
+            let sql = fs::read_to_string(path).context(format!("Failed to read {path}"))?;
+            Ok((sql, path.clone()))
+        }
+        AdhocSource::Stdin => {
+            if std::io::stdin().is_terminal() {
+                bail!("No SQL on stdin. Pipe SQL in or pass --file <path>.");
+            }
+            let sql = read_sql(std::io::stdin().lock())?;
+            Ok((sql, "<stdin>".to_string()))
+        }
+    }
+}
+
+async fn execute_adhoc(
+    client: &RedashClient,
+    file: Option<&str>,
+    data_source_id: u64,
+    cli_params: &[(String, serde_json::Value)],
+    timeout_secs: u64,
+) -> Result<crate::models::QueryResult> {
+    let (sql, source_label) = load_adhoc_sql(&adhoc_source(file))?;
+
+    eprintln!("Source: {source_label} (ad-hoc, data source {data_source_id})\n");
+
+    let parameters = params_from_cli(cli_params);
+    print_parameters(parameters.as_ref());
+
+    client
+        .execute_adhoc_with_polling(&sql, data_source_id, parameters, timeout_secs, 500)
+        .await
+}
+
+async fn execute_tracked_query(
     client: &RedashClient,
     query_id: u64,
-    param_args: Vec<String>,
-    format: OutputFormat,
+    cli_params: &[(String, serde_json::Value)],
     interactive: bool,
     timeout_secs: u64,
-    limit_rows: Option<usize>,
-) -> Result<()> {
+) -> Result<crate::models::QueryResult> {
     let (metadata, sql, _yaml_path) = load_query_metadata_by_id(query_id)?;
 
     sync_if_changed(client, query_id, &sql, &metadata).await?;
@@ -343,33 +420,110 @@ pub async fn execute(
     eprintln!("Executing query: {} - {}", metadata.id, metadata.name);
     eprintln!("Source: {}\n", tracked_source_line(metadata.id));
 
-    let cli_params: Vec<(String, serde_json::Value)> = param_args
+    let has_tty = std::io::stdin().is_terminal();
+    let parameters = build_parameter_map(&metadata, cli_params, interactive, has_tty)?;
+    print_parameters(parameters.as_ref());
+
+    client
+        .execute_query_with_polling(query_id, parameters, timeout_secs, 500)
+        .await
+}
+
+pub struct ExecuteArgs {
+    pub query_id: Option<u64>,
+    pub data_source: Option<u64>,
+    pub file: Option<String>,
+    pub param_args: Vec<String>,
+    pub format: OutputFormat,
+    pub interactive: bool,
+    pub timeout_secs: u64,
+    pub limit_rows: Option<usize>,
+}
+
+// The validated execution mode. Resolving the flag combinations into this enum once keeps
+// the validation matrix in a single place and makes invalid combinations unrepresentable
+// downstream (e.g. ad-hoc always carries a concrete data source).
+#[derive(Debug)]
+enum ExecuteMode {
+    Adhoc {
+        file: Option<String>,
+        data_source_id: u64,
+    },
+    Tracked {
+        query_id: u64,
+    },
+}
+
+fn resolve_mode(args: &ExecuteArgs) -> Result<ExecuteMode> {
+    if args.file.is_some() && args.query_id.is_some() {
+        bail!("Cannot combine a query ID with --file; choose one.");
+    }
+    if args.query_id.is_some() && args.data_source.is_some() {
+        bail!("--data-source cannot be combined with a query ID; it only applies to ad-hoc SQL.");
+    }
+
+    if let Some(query_id) = args.query_id {
+        return Ok(ExecuteMode::Tracked { query_id });
+    }
+
+    if args.file.is_some() || args.data_source.is_some() {
+        let data_source_id = args
+            .data_source
+            .context("ad-hoc execution requires --data-source <id> to run SQL")?;
+        return Ok(ExecuteMode::Adhoc {
+            file: args.file.clone(),
+            data_source_id,
+        });
+    }
+
+    bail!(
+        "No query specified. Provide a query ID (stmo-cli execute 123) \
+         or run ad-hoc SQL with --file <path> --data-source <id> (or pipe SQL via stdin)."
+    );
+}
+
+pub async fn execute(client: &RedashClient, args: ExecuteArgs) -> Result<()> {
+    let mode = resolve_mode(&args)?;
+
+    let cli_params: Vec<(String, serde_json::Value)> = args
+        .param_args
         .iter()
         .map(|arg| parse_parameter_arg(arg))
         .collect::<Result<Vec<_>>>()?;
 
-    let has_tty = std::io::stdin().is_terminal();
-    let parameters = build_parameter_map(&metadata, &cli_params, interactive, has_tty)?;
-
-    if let Some(ref params) = parameters {
-        eprintln!("Parameters:");
-        for (name, value) in params {
-            eprintln!("  {name} = {value}");
+    let result = match mode {
+        ExecuteMode::Adhoc {
+            file,
+            data_source_id,
+        } => {
+            execute_adhoc(
+                client,
+                file.as_deref(),
+                data_source_id,
+                &cli_params,
+                args.timeout_secs,
+            )
+            .await?
         }
-        eprintln!();
-    }
+        ExecuteMode::Tracked { query_id } => {
+            execute_tracked_query(
+                client,
+                query_id,
+                &cli_params,
+                args.interactive,
+                args.timeout_secs,
+            )
+            .await?
+        }
+    };
 
-    let result = client
-        .execute_query_with_polling(query_id, parameters, timeout_secs, 500)
-        .await?;
-
-    match format {
+    match args.format {
         OutputFormat::Json => {
-            let json = format_results_json(&result, limit_rows)?;
+            let json = format_results_json(&result, args.limit_rows)?;
             println!("{json}");
         }
         OutputFormat::Table => {
-            let table = format_results_table(&result, limit_rows);
+            let table = format_results_table(&result, args.limit_rows);
             println!("{table}");
         }
     }
@@ -465,6 +619,123 @@ mod tests {
         let line = tracked_source_line(121_870);
         assert!(line.contains("121870"));
         assert!(line.contains("server-stored"));
+    }
+
+    fn make_execute_args(
+        query_id: Option<u64>,
+        data_source: Option<u64>,
+        file: Option<&str>,
+    ) -> ExecuteArgs {
+        ExecuteArgs {
+            query_id,
+            data_source,
+            file: file.map(str::to_string),
+            param_args: vec![],
+            format: OutputFormat::Json,
+            interactive: false,
+            timeout_secs: 300,
+            limit_rows: None,
+        }
+    }
+
+    #[test]
+    fn test_resolve_mode_query_id_only_is_tracked() {
+        let args = make_execute_args(Some(123), None, None);
+        let mode = resolve_mode(&args).unwrap();
+        assert!(matches!(mode, ExecuteMode::Tracked { query_id: 123 }));
+    }
+
+    #[test]
+    fn test_resolve_mode_data_source_only_is_adhoc() {
+        let args = make_execute_args(None, Some(63), None);
+        let mode = resolve_mode(&args).unwrap();
+        assert!(matches!(
+            mode,
+            ExecuteMode::Adhoc {
+                data_source_id: 63,
+                file: None
+            }
+        ));
+    }
+
+    #[test]
+    fn test_resolve_mode_data_source_with_file_is_adhoc() {
+        let args = make_execute_args(None, Some(63), Some("scratch.sql"));
+        let mode = resolve_mode(&args).unwrap();
+        match mode {
+            ExecuteMode::Adhoc {
+                data_source_id,
+                file,
+            } => {
+                assert_eq!(data_source_id, 63);
+                assert_eq!(file.as_deref(), Some("scratch.sql"));
+            }
+            ExecuteMode::Tracked { .. } => panic!("expected Adhoc"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_mode_query_id_and_data_source_errors() {
+        let args = make_execute_args(Some(123), Some(63), None);
+        let err = resolve_mode(&args).unwrap_err();
+        assert!(err.to_string().contains("--data-source"));
+    }
+
+    #[test]
+    fn test_resolve_mode_query_id_and_file_errors() {
+        let args = make_execute_args(Some(123), None, Some("scratch.sql"));
+        let err = resolve_mode(&args).unwrap_err();
+        assert!(err.to_string().contains("--file"));
+    }
+
+    #[test]
+    fn test_resolve_mode_file_without_data_source_errors() {
+        let args = make_execute_args(None, None, Some("scratch.sql"));
+        let err = resolve_mode(&args).unwrap_err();
+        assert!(err.to_string().contains("--data-source"));
+    }
+
+    #[test]
+    fn test_resolve_mode_no_input_errors() {
+        let args = make_execute_args(None, None, None);
+        let err = resolve_mode(&args).unwrap_err();
+        assert!(err.to_string().contains("No query specified"));
+    }
+
+    #[test]
+    fn test_adhoc_source_none_is_stdin() {
+        assert_eq!(adhoc_source(None), AdhocSource::Stdin);
+    }
+
+    #[test]
+    fn test_adhoc_source_dash_is_stdin() {
+        assert_eq!(adhoc_source(Some("-")), AdhocSource::Stdin);
+    }
+
+    #[test]
+    fn test_adhoc_source_path_is_file() {
+        assert_eq!(
+            adhoc_source(Some("scratch.sql")),
+            AdhocSource::File("scratch.sql".to_string())
+        );
+    }
+
+    #[test]
+    fn test_read_sql_empty_input_errors() {
+        let err = read_sql(std::io::Cursor::new(b"" as &[u8])).unwrap_err();
+        assert!(err.to_string().contains("No SQL provided"));
+    }
+
+    #[test]
+    fn test_read_sql_whitespace_only_errors() {
+        let err = read_sql(std::io::Cursor::new(b"   \n" as &[u8])).unwrap_err();
+        assert!(err.to_string().contains("No SQL provided"));
+    }
+
+    #[test]
+    fn test_read_sql_returns_content() {
+        let sql = read_sql(std::io::Cursor::new(b"SELECT 1" as &[u8])).unwrap();
+        assert_eq!(sql, "SELECT 1");
     }
 
     #[test]
