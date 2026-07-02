@@ -517,4 +517,15 @@ mod llm_help_guard {
              Update the LLM_HELP const in src/main.rs to document them."
         );
     }
+
+    #[test]
+    fn skill_defers_to_help_for_the_command_catalog() {
+        let skill = include_str!("../.claude/skills/stmo/SKILL.md");
+        assert!(
+            skill.contains("stmo-cli --help"),
+            "The vendored SKILL.md (.claude/skills/stmo/SKILL.md) must instruct running \
+             `stmo-cli --help` for the command/flag catalog, so it stays version-matched \
+             instead of restating (and drifting from) LLM_HELP."
+        );
+    }
 }
