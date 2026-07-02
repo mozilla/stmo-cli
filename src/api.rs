@@ -229,8 +229,6 @@ impl RedashClient {
             .await
     }
 
-    // Wired into the CLI in the next commit (`execute --data-source`); unused for now.
-    #[allow(dead_code)]
     pub async fn refresh_adhoc_query(
         &self,
         sql: &str,
@@ -253,8 +251,6 @@ impl RedashClient {
         Ok(job_response.job)
     }
 
-    // Wired into the CLI in the next commit (`execute --data-source`); unused for now.
-    #[allow(dead_code)]
     pub async fn get_adhoc_query_result(
         &self,
         result_id: u64,
@@ -325,8 +321,6 @@ impl RedashClient {
         self.get_query_result(query_id, result_id).await
     }
 
-    // Wired into the CLI in the next commit (`execute --data-source`); unused for now.
-    #[allow(dead_code)]
     pub async fn execute_adhoc_with_polling(
         &self,
         sql: &str,

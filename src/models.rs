@@ -262,8 +262,6 @@ pub struct RefreshRequest {
     pub parameters: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
-// Wired into the CLI in the next commit (`execute --data-source`); unused for now.
-#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdhocRefreshRequest {
     #[serde(rename = "query")]

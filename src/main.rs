@@ -53,7 +53,20 @@ enum Commands {
     #[command(about = "Execute a query and display results")]
     Execute {
         #[arg(help = "Query ID to execute (must be fetched locally first)")]
-        query_id: u64,
+        query_id: Option<u64>,
+
+        #[arg(
+            long,
+            help = "Data source ID to run ad-hoc SQL against (no tracked query is created); \
+                    SQL comes from --file or stdin"
+        )]
+        data_source: Option<u64>,
+
+        #[arg(
+            long,
+            help = "SQL file for ad-hoc execution (use '-' or omit for stdin)"
+        )]
+        file: Option<String>,
 
         #[arg(
             long,
@@ -222,6 +235,8 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
         }
         Commands::Execute {
             query_id,
+            data_source,
+            file,
             param,
             format,
             interactive,
@@ -231,16 +246,17 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
             let output_format = format
                 .parse::<commands::OutputFormat>()
                 .context("Invalid output format")?;
-            commands::execute::execute(
-                &client,
+            let args = commands::execute::ExecuteArgs {
                 query_id,
-                param,
-                output_format,
+                data_source,
+                file,
+                param_args: param,
+                format: output_format,
                 interactive,
-                timeout,
-                limit,
-            )
-            .await?;
+                timeout_secs: timeout,
+                limit_rows: limit,
+            };
+            commands::execute::execute(&client, args).await?;
         }
         Commands::DataSources {
             data_source_id,
@@ -336,11 +352,13 @@ REDASH_API_KEY required | REDASH_URL optional (default: https://sql.telemetry.mo
 API key: https://sql.telemetry.mozilla.org/users/me → API Key section
 
 discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N]
+execute --data-source ID [--file PATH|-] [--param k=v]...: ad-hoc SQL, no tracked query created (no schema, so no d_* dates or multi-value expansion — inline values in the SQL)
 data-sources [ID] [--schema] [--refresh] | archive IDs | archive --cleanup | unarchive IDs | init | update
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
 
 schedule IDs --interval SECS [--time HH:MM] [--day-of-week N] | schedule IDs --clear (writes YAML; run deploy to push)
 deploy: uses git diff by default; --all required outside a git repo
+execute ID: deploys local .sql/.yaml first if it differs from the server-stored query, then always runs the up-to-date server copy
 archive IDs: archives on server + deletes local | archive --cleanup: deletes local only for already-archived (does NOT archive on server)
 dashboards: addressed by slug not ID; only favorited dashboards appear in dashboards discover
 
