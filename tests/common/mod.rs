@@ -117,6 +117,39 @@ pub fn mock_get_query_result(query_id: u64, result_id: u64) -> Mock {
         })))
 }
 
+pub fn mock_adhoc_refresh(job_id: &str) -> Mock {
+    Mock::given(method("POST"))
+        .and(path("/api/query_results"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "job": {
+                "id": job_id,
+                "status": 1,
+                "query_result_id": null,
+                "error": null
+            }
+        })))
+}
+
+pub fn mock_get_adhoc_query_result(result_id: u64) -> Mock {
+    Mock::given(method("GET"))
+        .and(path(format!("/api/query_results/{result_id}.json")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "query_result": {
+                "id": result_id,
+                "data": {
+                    "columns": [
+                        {"name": "one", "type": "integer"}
+                    ],
+                    "rows": [
+                        {"one": 1}
+                    ]
+                },
+                "runtime": 0.5,
+                "retrieved_at": "2026-01-21T10:00:00"
+            }
+        })))
+}
+
 pub fn mock_list_my_queries(page: u32, page_size: u32, total_count: u64) -> Mock {
     Mock::given(method("GET"))
         .and(path("/api/queries/my"))

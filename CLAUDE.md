@@ -53,7 +53,7 @@ src/
 **Query**: list_my_queries, get_query, fetch_all_queries, create_query, create_or_update_query
 **Search**: search_queries(q, limit), search_dashboards(q, limit); `base_url()` accessor
 **Visualization**: create_visualization, update_visualization
-**Execution**: refresh_query, poll_job, get_query_result, execute_query_with_polling
+**Execution**: refresh_query, poll_job, get_query_result, execute_query_with_polling, refresh_adhoc_query, get_adhoc_query_result, execute_adhoc_with_polling
 **Data Source**: list_data_sources, get_data_source, get_data_source_schema
 **Archive**: archive_query, unarchive_query
 **Widget**: create_widget, update_widget, delete_widget

@@ -191,6 +191,90 @@ async fn test_execute_query_with_polling_timeout() {
 }
 
 #[tokio::test]
+async fn test_refresh_adhoc_query_success() {
+    let mock_server = MockServer::start().await;
+
+    mock_adhoc_refresh("adhoc-job-id")
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let job = client
+        .refresh_adhoc_query("SELECT 1 AS one", 63, None)
+        .await
+        .unwrap();
+
+    assert_eq!(job.id, "adhoc-job-id");
+    assert_eq!(job.status, 1);
+}
+
+#[tokio::test]
+async fn test_get_adhoc_query_result_success() {
+    let mock_server = MockServer::start().await;
+
+    mock_get_adhoc_query_result(789).mount(&mock_server).await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let result = client.get_adhoc_query_result(789).await.unwrap();
+
+    assert_eq!(result.id, 789);
+    assert_eq!(result.data.columns.len(), 1);
+    assert_eq!(result.data.columns[0].name, "one");
+    assert_eq!(result.data.rows.len(), 1);
+}
+
+#[tokio::test]
+async fn test_execute_adhoc_with_polling_success() {
+    let mock_server = MockServer::start().await;
+
+    mock_adhoc_refresh("adhoc-job-id")
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    mock_poll_job_success("adhoc-job-id", 789)
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    mock_get_adhoc_query_result(789)
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let result = client
+        .execute_adhoc_with_polling("SELECT 1 AS one", 63, None, 10, 100)
+        .await
+        .unwrap();
+
+    assert_eq!(result.id, 789);
+    assert_eq!(result.data.columns[0].name, "one");
+}
+
+#[tokio::test]
+async fn test_execute_adhoc_with_polling_failure() {
+    let mock_server = MockServer::start().await;
+
+    mock_adhoc_refresh("adhoc-job-id").mount(&mock_server).await;
+
+    mock_poll_job_failure("adhoc-job-id", "Syntax error in SQL")
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let result = client
+        .execute_adhoc_with_polling("SELECT bad syntax", 63, None, 10, 100)
+        .await;
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("Query execution failed"));
+    assert!(err.to_string().contains("Syntax error in SQL"));
+}
+
+#[tokio::test]
 async fn test_list_my_queries_pagination() {
     let mock_server = MockServer::start().await;
 

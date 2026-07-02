@@ -204,6 +204,17 @@ impl RedashClient {
         Ok(job_response.job)
     }
 
+    async fn fetch_query_result(
+        &self,
+        url: &str,
+        fetch_context: &str,
+    ) -> Result<crate::models::QueryResult> {
+        let result_response: crate::models::QueryResultResponse =
+            self.get_json(url, fetch_context).await?;
+
+        Ok(result_response.query_result)
+    }
+
     pub async fn get_query_result(
         &self,
         query_id: u64,
@@ -214,25 +225,54 @@ impl RedashClient {
             self.base_url
         );
 
-        let result_response: crate::models::QueryResultResponse = self
-            .get_json(&url, &format!("result {result_id} for query {query_id}"))
-            .await?;
-
-        Ok(result_response.query_result)
+        self.fetch_query_result(&url, &format!("result {result_id} for query {query_id}"))
+            .await
     }
 
-    pub async fn execute_query_with_polling(
+    // Wired into the CLI in the next commit (`execute --data-source`); unused for now.
+    #[allow(dead_code)]
+    pub async fn refresh_adhoc_query(
         &self,
-        query_id: u64,
+        sql: &str,
+        data_source_id: u64,
         parameters: Option<std::collections::HashMap<String, serde_json::Value>>,
+    ) -> Result<crate::models::Job> {
+        let url = format!("{}/api/query_results", self.base_url);
+
+        let request = crate::models::AdhocRefreshRequest {
+            sql: sql.to_string(),
+            data_source_id,
+            max_age: 0,
+            parameters,
+        };
+
+        let job_response: crate::models::JobResponse = self
+            .post_json(&url, &request, "ad-hoc query refresh")
+            .await?;
+
+        Ok(job_response.job)
+    }
+
+    // Wired into the CLI in the next commit (`execute --data-source`); unused for now.
+    #[allow(dead_code)]
+    pub async fn get_adhoc_query_result(
+        &self,
+        result_id: u64,
+    ) -> Result<crate::models::QueryResult> {
+        let url = format!("{}/api/query_results/{result_id}.json", self.base_url);
+
+        self.fetch_query_result(&url, &format!("ad-hoc result {result_id}"))
+            .await
+    }
+
+    async fn poll_job_to_completion(
+        &self,
+        job: crate::models::Job,
         timeout_secs: u64,
         poll_interval_ms: u64,
-    ) -> Result<crate::models::QueryResult> {
+    ) -> Result<u64> {
         use crate::models::JobStatus;
         use tokio::time::{Duration, sleep};
-
-        eprintln!("Executing query {query_id}...");
-        let job = self.refresh_query(query_id, parameters).await?;
 
         let start = std::time::Instant::now();
         let timeout = Duration::from_secs(timeout_secs);
@@ -244,16 +284,11 @@ impl RedashClient {
                 anyhow::bail!("Query execution timed out after {timeout_secs} seconds");
             }
 
-            let status = JobStatus::from_u8(current_job.status)?;
-
-            match status {
+            match JobStatus::from_u8(current_job.status)? {
                 JobStatus::Success => {
-                    let result_id = current_job
+                    return current_job
                         .query_result_id
-                        .context("Job succeeded but no result_id returned")?;
-
-                    eprintln!("Query completed, fetching results...");
-                    return self.get_query_result(query_id, result_id).await;
+                        .context("Job succeeded but no result_id returned");
                 }
                 JobStatus::Failure => {
                     let error = current_job
@@ -271,6 +306,45 @@ impl RedashClient {
                 }
             }
         }
+    }
+
+    pub async fn execute_query_with_polling(
+        &self,
+        query_id: u64,
+        parameters: Option<std::collections::HashMap<String, serde_json::Value>>,
+        timeout_secs: u64,
+        poll_interval_ms: u64,
+    ) -> Result<crate::models::QueryResult> {
+        eprintln!("Executing query {query_id}...");
+        let job = self.refresh_query(query_id, parameters).await?;
+        let result_id = self
+            .poll_job_to_completion(job, timeout_secs, poll_interval_ms)
+            .await?;
+
+        eprintln!("Query completed, fetching results...");
+        self.get_query_result(query_id, result_id).await
+    }
+
+    // Wired into the CLI in the next commit (`execute --data-source`); unused for now.
+    #[allow(dead_code)]
+    pub async fn execute_adhoc_with_polling(
+        &self,
+        sql: &str,
+        data_source_id: u64,
+        parameters: Option<std::collections::HashMap<String, serde_json::Value>>,
+        timeout_secs: u64,
+        poll_interval_ms: u64,
+    ) -> Result<crate::models::QueryResult> {
+        eprintln!("Executing SQL on data source {data_source_id}...");
+        let job = self
+            .refresh_adhoc_query(sql, data_source_id, parameters)
+            .await?;
+        let result_id = self
+            .poll_job_to_completion(job, timeout_secs, poll_interval_ms)
+            .await?;
+
+        eprintln!("Query completed, fetching results...");
+        self.get_adhoc_query_result(result_id).await
     }
 
     pub async fn archive_query(&self, query_id: u64) -> Result<Query> {

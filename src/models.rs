@@ -262,6 +262,18 @@ pub struct RefreshRequest {
     pub parameters: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
+// Wired into the CLI in the next commit (`execute --data-source`); unused for now.
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdhocRefreshRequest {
+    #[serde(rename = "query")]
+    pub sql: String,
+    pub data_source_id: u64,
+    pub max_age: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<std::collections::HashMap<String, serde_json::Value>>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JobResponse {
     pub job: Job,
