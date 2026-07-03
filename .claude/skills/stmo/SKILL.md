@@ -87,6 +87,18 @@ The temp directory is not a git repo, so `stmo-cli deploy` (which uses git diff 
    stmo-cli fetch <id>
    ```
 
+## Quick one-off SQL (no tracked query)
+
+For a single throwaway question, skip the create/deploy/archive cycle above entirely and run SQL directly against a data source:
+
+```bash
+stmo-cli data-sources                                   # find the data source ID
+echo 'SELECT 1' | stmo-cli execute --data-source <id>   # SQL via stdin
+stmo-cli execute --data-source <id> --file scratch.sql  # or from a file
+```
+
+This creates no `queries/` file and needs no `archive` afterwards. It has no parameter schema, so `d_*` dynamic date tokens and multi-value enum expansion don't apply — inline concrete values directly in the SQL (e.g. `IN ('release', 'beta')`). `--data-source` can't be combined with a query ID. Reach for the tracked-query workflow above instead when you want to iterate, save, schedule, or share the query.
+
 ## Scheduling refreshes
 
 `stmo-cli schedule <id> --interval SECS [--time HH:MM] [--day-of-week N]` sets a query's refresh cadence; `stmo-cli schedule <id> --clear` removes it. This only updates the local YAML — run `stmo-cli deploy` afterwards to push the change to Redash.
