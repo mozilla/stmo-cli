@@ -50,9 +50,12 @@ enum Commands {
         all: bool,
     },
 
-    #[command(about = "Execute a query and display results")]
+    #[command(about = "Execute a tracked query, or run ad-hoc SQL against a data source")]
     Execute {
-        #[arg(help = "Query ID to execute (must be fetched locally first)")]
+        #[arg(
+            help = "Query ID to execute (must be fetched locally first); omit and use \
+                    --data-source to run ad-hoc SQL"
+        )]
         query_id: Option<u64>,
 
         #[arg(
@@ -64,7 +67,8 @@ enum Commands {
 
         #[arg(
             long,
-            help = "SQL file for ad-hoc execution (use '-' or omit for stdin)"
+            help = "Path to a .sql file to read the ad-hoc SQL from; pass '-' or omit to read \
+                    SQL from stdin (e.g. echo 'SELECT 1' | stmo-cli execute --data-source ID)"
         )]
         file: Option<String>,
 
@@ -352,7 +356,7 @@ REDASH_API_KEY required | REDASH_URL optional (default: https://sql.telemetry.mo
 API key: https://sql.telemetry.mozilla.org/users/me → API Key section
 
 discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N]
-execute --data-source ID [--file PATH|-] [--param k=v]...: ad-hoc SQL, no tracked query created (no schema, so no d_* dates or multi-value expansion — inline values in the SQL)
+execute --data-source ID [--file PATH|-] [--param k=v]...: ad-hoc SQL from a file or stdin ('-' or omit --file = read stdin), no tracked query created (no schema, so no d_* dates or multi-value expansion — inline values in the SQL)
 data-sources [ID] [--schema] [--refresh] | archive IDs | archive --cleanup | unarchive IDs | init | update
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
 
