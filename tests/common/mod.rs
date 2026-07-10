@@ -677,6 +677,72 @@ pub fn mock_update_query_with_vizs(query_id: u64, name: &str, vizs: &serde_json:
         })))
 }
 
+pub fn mock_list_query_snippets(snippets: &serde_json::Value) -> Mock {
+    Mock::given(method("GET"))
+        .and(path("/api/query_snippets"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(snippets))
+}
+
+pub fn mock_get_query_snippet(snippet_id: u64, trigger: &str, snippet_body: &str) -> Mock {
+    Mock::given(method("GET"))
+        .and(path(format!("/api/query_snippets/{snippet_id}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": snippet_id,
+            "trigger": trigger,
+            "description": "Test snippet",
+            "snippet": snippet_body,
+            "user": null,
+            "updated_at": "2026-01-21T10:00:00Z",
+            "created_at": "2026-01-21T10:00:00Z"
+        })))
+}
+
+pub fn mock_get_query_snippet_not_found(snippet_id: u64) -> Mock {
+    Mock::given(method("GET"))
+        .and(path(format!("/api/query_snippets/{snippet_id}")))
+        .respond_with(ResponseTemplate::new(404))
+}
+
+pub fn mock_create_query_snippet(id: u64, trigger: &str, snippet_body: &str) -> Mock {
+    Mock::given(method("POST"))
+        .and(path("/api/query_snippets"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": id,
+            "trigger": trigger,
+            "description": "Test snippet",
+            "snippet": snippet_body,
+            "user": null,
+            "updated_at": "2026-01-21T10:00:00Z",
+            "created_at": "2026-01-21T10:00:00Z"
+        })))
+}
+
+pub fn mock_update_query_snippet(snippet_id: u64, trigger: &str, snippet_body: &str) -> Mock {
+    Mock::given(method("POST"))
+        .and(path(format!("/api/query_snippets/{snippet_id}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": snippet_id,
+            "trigger": trigger,
+            "description": "Test snippet",
+            "snippet": snippet_body,
+            "user": null,
+            "updated_at": "2026-01-21T10:00:00Z",
+            "created_at": "2026-01-21T10:00:00Z"
+        })))
+}
+
+pub fn mock_delete_query_snippet(snippet_id: u64) -> Mock {
+    Mock::given(method("DELETE"))
+        .and(path(format!("/api/query_snippets/{snippet_id}")))
+        .respond_with(ResponseTemplate::new(204))
+}
+
+pub fn mock_delete_query_snippet_not_found(snippet_id: u64) -> Mock {
+    Mock::given(method("DELETE"))
+        .and(path(format!("/api/query_snippets/{snippet_id}")))
+        .respond_with(ResponseTemplate::new(404))
+}
+
 pub fn mock_get_query_with_vizs(query_id: u64, name: &str, vizs: &serde_json::Value) -> Mock {
     Mock::given(method("GET"))
         .and(path(format!("/api/queries/{query_id}")))

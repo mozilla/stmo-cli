@@ -206,6 +206,38 @@ pub struct QueryMetadata {
     pub tags: Option<Vec<String>>,
 }
 
+// TODO(snippets commit 2): drop these #[allow(dead_code)] once src/commands/snippets.rs
+// wires up list/fetch/deploy/delete and these types are constructed outside of tests.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[allow(dead_code)]
+pub struct QuerySnippet {
+    pub id: u64,
+    pub trigger: String,
+    pub description: Option<String>,
+    pub snippet: String,
+    #[serde(default)]
+    pub user: Option<QueryUser>,
+    pub updated_at: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[allow(dead_code)]
+pub struct CreateQuerySnippet {
+    pub trigger: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub snippet: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub struct SnippetMetadata {
+    pub id: u64,
+    pub trigger: String,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[allow(dead_code)]
 pub struct User {
@@ -561,6 +593,97 @@ tags:
         assert_eq!(metadata.data_source_id, 63);
         assert_eq!(metadata.options.parameters.len(), 1);
         assert_eq!(metadata.options.parameters[0].name, "project");
+    }
+
+    #[test]
+    fn test_query_snippet_deserialization() {
+        let json = r#"{
+            "id": 31,
+            "trigger": "reviewbot_e2e_action_ctcs",
+            "description": "Action-task gap compression CTEs",
+            "snippet": "action_tasks AS (\n    SELECT 1\n)",
+            "user": {
+                "id": 530,
+                "name": "jlorenzo@mozilla.com",
+                "email": "jlorenzo@mozilla.com"
+            },
+            "updated_at": "2026-06-24T09:13:26.873Z",
+            "created_at": "2026-06-24T09:13:26.873Z"
+        }"#;
+
+        let snippet: QuerySnippet = serde_json::from_str(json).unwrap();
+        assert_eq!(snippet.id, 31);
+        assert_eq!(snippet.trigger, "reviewbot_e2e_action_ctcs");
+        assert_eq!(
+            snippet.description,
+            Some("Action-task gap compression CTEs".to_string())
+        );
+        assert!(snippet.snippet.contains("action_tasks AS"));
+        assert_eq!(snippet.user.unwrap().email, "jlorenzo@mozilla.com");
+    }
+
+    #[test]
+    fn test_query_snippet_missing_user_deserialization() {
+        let json = r#"{
+            "id": 12,
+            "trigger": "days_ago",
+            "description": "",
+            "snippet": "(CURRENT_DATE - INTERVAL '$1' DAY)",
+            "updated_at": "2018-04-05T19:36:28.831Z",
+            "created_at": "2018-04-05T19:09:55.265Z"
+        }"#;
+
+        let snippet: QuerySnippet = serde_json::from_str(json).unwrap();
+        assert_eq!(snippet.id, 12);
+        assert!(snippet.user.is_none());
+    }
+
+    #[test]
+    fn test_create_query_snippet_serialization() {
+        let create = CreateQuerySnippet {
+            trigger: "reviewbot_push_duration".to_string(),
+            description: Some("Corrected push duration formula".to_string()),
+            snippet: "TIMESTAMP_DIFF(a, b, SECOND)".to_string(),
+        };
+
+        let json = serde_json::to_string(&create).unwrap();
+        assert!(json.contains("\"trigger\":\"reviewbot_push_duration\""));
+        assert!(json.contains("\"snippet\":\"TIMESTAMP_DIFF(a, b, SECOND)\""));
+        assert!(!json.contains("\"id\""));
+    }
+
+    #[test]
+    fn test_create_query_snippet_omits_none_description() {
+        let create = CreateQuerySnippet {
+            trigger: "trig".to_string(),
+            description: None,
+            snippet: "SELECT 1".to_string(),
+        };
+
+        let json = serde_json::to_string(&create).unwrap();
+        assert!(!json.contains("description"));
+    }
+
+    #[test]
+    fn test_snippet_metadata_yaml_roundtrip() {
+        let yaml = r"
+id: 31
+trigger: reviewbot_e2e_action_ctcs
+description: Action-task gap compression CTEs
+";
+
+        let metadata: SnippetMetadata = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(metadata.id, 31);
+        assert_eq!(metadata.trigger, "reviewbot_e2e_action_ctcs");
+        assert_eq!(
+            metadata.description,
+            Some("Action-task gap compression CTEs".to_string())
+        );
+
+        let reserialized = serde_yaml::to_string(&metadata).unwrap();
+        let roundtripped: SnippetMetadata = serde_yaml::from_str(&reserialized).unwrap();
+        assert_eq!(roundtripped.id, metadata.id);
+        assert_eq!(roundtripped.trigger, metadata.trigger);
     }
 
     #[test]

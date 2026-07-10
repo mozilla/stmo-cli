@@ -1,8 +1,8 @@
 #![allow(clippy::missing_errors_doc)]
 
 use crate::models::{
-    CreateDashboard, CreateQuery, CreateWidget, Dashboard, DashboardSummary, DashboardsResponse,
-    DataSource, DataSourceSchema, QueriesResponse, Query,
+    CreateDashboard, CreateQuery, CreateQuerySnippet, CreateWidget, Dashboard, DashboardSummary,
+    DashboardsResponse, DataSource, DataSourceSchema, QueriesResponse, Query, QuerySnippet,
 };
 use anyhow::{Context, Result};
 use reqwest::{Client, header};
@@ -353,6 +353,53 @@ impl RedashClient {
         let payload = serde_json::json!({"is_archived": false});
         self.post_json(&url, &payload, &format!("query {query_id} unarchive"))
             .await
+    }
+
+    // TODO(snippets commit 2): drop these #[allow(dead_code)] once
+    // src/commands/snippets.rs calls each of these.
+    #[allow(dead_code)]
+    pub async fn list_query_snippets(&self) -> Result<Vec<QuerySnippet>> {
+        let url = format!("{}/api/query_snippets", self.base_url);
+        self.get_json(&url, "query snippets").await
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_query_snippet(&self, snippet_id: u64) -> Result<QuerySnippet> {
+        let url = format!("{}/api/query_snippets/{snippet_id}", self.base_url);
+        self.get_json(&url, &format!("query snippet {snippet_id}"))
+            .await
+    }
+
+    #[allow(dead_code)]
+    pub async fn create_query_snippet(&self, create: &CreateQuerySnippet) -> Result<QuerySnippet> {
+        let url = format!("{}/api/query_snippets", self.base_url);
+        self.post_json(&url, create, "new query snippet").await
+    }
+
+    #[allow(dead_code)]
+    pub async fn update_query_snippet(&self, snippet: &QuerySnippet) -> Result<QuerySnippet> {
+        let url = format!("{}/api/query_snippets/{}", self.base_url, snippet.id);
+        self.post_json(
+            &url,
+            snippet,
+            &format!("query snippet {} update", snippet.id),
+        )
+        .await
+    }
+
+    #[allow(dead_code)]
+    pub async fn delete_query_snippet(&self, snippet_id: u64) -> Result<()> {
+        let url = format!("{}/api/query_snippets/{snippet_id}", self.base_url);
+        let response = self
+            .client
+            .delete(&url)
+            .send()
+            .await
+            .context(format!("Failed to delete query snippet {snippet_id}"))?;
+
+        ensure_success(response).await?;
+
+        Ok(())
     }
 
     pub async fn create_dashboard(&self, dashboard: &CreateDashboard) -> Result<Dashboard> {
