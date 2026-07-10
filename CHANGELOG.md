@@ -4,6 +4,7 @@
 
 ### Features
 - `execute --data-source ID`: run arbitrary SQL against a data source (stdin or `--file PATH`), creating no stored query
+- `snippets list|fetch|deploy|delete`: manage Redash query snippets, mirroring the queries/dashboards file model (`snippets/{id}-{trigger}.sql` + `.yaml`)
 
 ### Fixes
 - `execute ID`: deploy local changes automatically before executing, so it never silently runs a stale server copy (previously it always ran whatever was last deployed, ignoring unsynced local edits)

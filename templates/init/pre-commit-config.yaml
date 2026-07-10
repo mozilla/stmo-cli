@@ -8,3 +8,22 @@ repos:
   hooks:
   - id: sqlfluff-lint
     args: [--ignore, templating]
+    exclude: ^snippets/
+- repo: local
+  hooks:
+  - id: sqlfluff-lint-snippets
+    name: sqlfluff lint (snippets, wrapped in WITH/SELECT since they're pasted fragments)
+    entry: >-
+      bash -c '
+        fail=0
+        for f in "$@"; do
+          tmp="${f%.sql}.snippet-lint-tmp.sql"
+          { printf "WITH "; cat "$f"; printf "\n\nSELECT 1\n"; } > "$tmp"
+          sqlfluff lint --ignore templating --exclude-rules structure.unused_cte "$tmp" || fail=1
+          rm -f "$tmp"
+        done
+        exit $fail
+      ' --
+    language: python
+    additional_dependencies: ["sqlfluff==4.0.4"]
+    files: ^snippets/.*\.sql$
