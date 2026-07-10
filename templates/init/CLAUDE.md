@@ -5,8 +5,8 @@ This repository contains version-controlled Redash queries and dashboards manage
 ## Quick Reference
 
 **Install**: `cargo install stmo-cli`
-**Commands**: `discover [--search TEXT] [--limit N]` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule`
-**File Naming**: `queries/{id}-{slug}.sql` + `queries/{id}-{slug}.yaml`, `dashboards/{id}-{slug}.yaml`
+**Commands**: `discover [--search TEXT] [--limit N]` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule` `snippets`
+**File Naming**: `queries/{id}-{slug}.sql` + `queries/{id}-{slug}.yaml`, `dashboards/{id}-{slug}.yaml`, `snippets/{id}-{trigger}.sql` + `snippets/{id}-{trigger}.yaml`
 **Env Vars**: `REDASH_API_KEY` (required), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
 ## Data Exploration (AI Assistants)
@@ -56,6 +56,24 @@ Examples:
 - `stmo-cli dashboards deploy --all`
 - `stmo-cli dashboards archive bug-2006698---ccov-build-regression`
 
+### Snippets
+
+Redash [query snippets](https://redash.io/help/user-guide/querying/query-snippets) are reusable
+SQL fragments (e.g. a shared set of CTEs) that get pasted into a query's editor by typing their
+`trigger`. Pasting is a one-time text expansion, not a live reference — editing a snippet later
+does **not** update queries that already pasted it; re-paste (or hand-edit) each query after
+changing a snippet it's used in.
+
+**snippets list**: List query snippets from Redash (id, trigger, description)
+**snippets fetch**: Download snippets (`--all` for tracked, or `<ids>`)
+**snippets deploy**: Upload changes (no args = git-changed files only or all if not in a git repo, `--all` for everything, or `<ids>`)
+**snippets delete**: Delete snippets in Redash **and** remove local files (`<ids>`) — snippets have no archive concept, so this is a direct, irreversible delete (unlike `archive`, which keeps the resource recoverable via `unarchive`)
+
+Examples:
+- `stmo-cli snippets fetch 31`
+- `stmo-cli snippets deploy --all`
+- `stmo-cli snippets delete 31 42`
+
 ## File Format
 
 **SQL**: `queries/{id}-{slug}.sql` - query text
@@ -82,9 +100,22 @@ visualizations:
 
 To add a visualization to an existing query: add an entry to the `visualizations` list **without** an `id` field (or `id: null`). Do not change the `id` of existing visualizations — they will be updated in place.
 
+**Snippets**: `snippets/{id}-{trigger}.sql` - the fragment body. This is a bare list of CTEs
+(no leading `WITH`, no trailing `SELECT`) meant to be pasted into a larger query, so it is
+**not standalone SQL** — it can't be run or linted on its own; see "Snippet SQL Style" below.
+**Snippets YAML**: `snippets/{id}-{trigger}.yaml` - metadata (`id`, `trigger`, `description`)
+
 ## SQL Style
 
 sqlfluff (BigQuery) enforced via pre-commit. Match existing `queries/*.sql` formatting.
+
+### Snippet SQL Style
+
+Snippet fragments can't be parsed standalone (see above), so the normal `sqlfluff-lint` hook
+excludes `snippets/`. If this repo's `.pre-commit-config.yaml` includes the `sqlfluff-lint-snippets`
+hook (from the `stmo-cli` snippet-support template), it lints each `snippets/*.sql` file by
+temporarily wrapping it in `WITH ... SELECT 1` before running sqlfluff, then maps errors back to
+the original file — real style/structure feedback without needing a full standalone query.
 
 ## Query Creation
 
@@ -98,7 +129,13 @@ sqlfluff (BigQuery) enforced via pre-commit. Match existing `queries/*.sql` form
 2. `stmo-cli dashboards deploy {slug}` → creates dashboard in Redash
 3. Local file is automatically renamed to `{new-id}-{server-slug}.yaml`
 
-## Query/Dashboard Authoring
+## Snippet Creation
+
+1. Create `snippets/0-{trigger}.sql` + `snippets/0-{trigger}.yaml` with `id: 0`
+2. `stmo-cli snippets deploy 0` → creates the snippet in Redash and auto-renames local files to `{new-id}-{trigger}.*`
+3. Commit the renamed `{new-id}-{trigger}.*` files — **never commit `0-*.` files**
+
+## Query/Dashboard/Snippet Authoring
 
 ### Before Deploying SQL
-Run `pre-commit run sqlfluff-lint --all-files` to catch formatting issues early (lowercase identifiers, proper indentation, etc).
+Run `pre-commit run sqlfluff-lint --all-files` to catch formatting issues early (lowercase identifiers, proper indentation, etc). This also runs `sqlfluff-lint-snippets` if configured (see "Snippet SQL Style" above).

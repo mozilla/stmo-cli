@@ -492,6 +492,8 @@ mod tests {
     fn test_template_content_validity() {
         assert!(TEMPLATE_PRE_COMMIT.contains("yamllint"));
         assert!(TEMPLATE_PRE_COMMIT.contains("sqlfluff"));
+        assert!(TEMPLATE_PRE_COMMIT.contains("sqlfluff-lint-snippets"));
+        assert!(TEMPLATE_PRE_COMMIT.contains("exclude: ^snippets/"));
 
         assert!(TEMPLATE_SQLFLUFF.contains("bigquery"));
         assert!(TEMPLATE_SQLFLUFF.contains("[sqlfluff]"));
@@ -502,5 +504,6 @@ mod tests {
 
         assert!(TEMPLATE_CLAUDE_MD.contains("stmo-cli"));
         assert!(TEMPLATE_CLAUDE_MD.contains("Quick Reference"));
+        assert!(TEMPLATE_CLAUDE_MD.contains("snippets"));
     }
 }
