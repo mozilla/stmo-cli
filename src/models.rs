@@ -206,10 +206,7 @@ pub struct QueryMetadata {
     pub tags: Option<Vec<String>>,
 }
 
-// TODO(snippets commit 2): drop these #[allow(dead_code)] once src/commands/snippets.rs
-// wires up list/fetch/deploy/delete and these types are constructed outside of tests.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[allow(dead_code)]
 pub struct QuerySnippet {
     pub id: u64,
     pub trigger: String,
@@ -222,7 +219,6 @@ pub struct QuerySnippet {
 }
 
 #[derive(Debug, Serialize, Clone)]
-#[allow(dead_code)]
 pub struct CreateQuerySnippet {
     pub trigger: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -231,7 +227,6 @@ pub struct CreateQuerySnippet {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct SnippetMetadata {
     pub id: u64,
     pub trigger: String,

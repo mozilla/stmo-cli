@@ -355,28 +355,22 @@ impl RedashClient {
             .await
     }
 
-    // TODO(snippets commit 2): drop these #[allow(dead_code)] once
-    // src/commands/snippets.rs calls each of these.
-    #[allow(dead_code)]
     pub async fn list_query_snippets(&self) -> Result<Vec<QuerySnippet>> {
         let url = format!("{}/api/query_snippets", self.base_url);
         self.get_json(&url, "query snippets").await
     }
 
-    #[allow(dead_code)]
     pub async fn get_query_snippet(&self, snippet_id: u64) -> Result<QuerySnippet> {
         let url = format!("{}/api/query_snippets/{snippet_id}", self.base_url);
         self.get_json(&url, &format!("query snippet {snippet_id}"))
             .await
     }
 
-    #[allow(dead_code)]
     pub async fn create_query_snippet(&self, create: &CreateQuerySnippet) -> Result<QuerySnippet> {
         let url = format!("{}/api/query_snippets", self.base_url);
         self.post_json(&url, create, "new query snippet").await
     }
 
-    #[allow(dead_code)]
     pub async fn update_query_snippet(&self, snippet: &QuerySnippet) -> Result<QuerySnippet> {
         let url = format!("{}/api/query_snippets/{}", self.base_url, snippet.id);
         self.post_json(
@@ -387,7 +381,6 @@ impl RedashClient {
         .await
     }
 
-    #[allow(dead_code)]
     pub async fn delete_query_snippet(&self, snippet_id: u64) -> Result<()> {
         let url = format!("{}/api/query_snippets/{snippet_id}", self.base_url);
         let response = self

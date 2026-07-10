@@ -120,6 +120,20 @@ parameters can't be expanded for you — inline the values directly in the SQL (
 Parameters are passed as `--param name=value` (repeatable). Values are parsed as JSON when
 possible, anything that isn't valid JSON is treated as a plain string.
 
+### Manage Query Snippets
+
+```bash
+stmo-cli snippets list                     # List query snippets from Redash
+stmo-cli snippets fetch 31 42              # Fetch specific snippets
+stmo-cli snippets fetch --all              # Fetch all tracked snippets
+stmo-cli snippets deploy                   # Deploy changed snippets (detected via git status)
+stmo-cli snippets deploy --all             # Deploy all snippets
+stmo-cli snippets delete 31 42             # Delete snippets in Redash and remove local files
+```
+
+Snippets don't have an archive concept in Redash — `snippets delete` removes the snippet on
+the server and deletes the local files in one step; there's no separate `--cleanup` flag.
+
 ## File Structure
 
 ```
@@ -128,9 +142,13 @@ queries/
 └── 123-mobile-crashes.yaml
 dashboards/
 └── 456-my-dashboard.yaml
+snippets/
+├── 31-reviewbot_e2e_action_ctcs.sql
+└── 31-reviewbot_e2e_action_ctcs.yaml
 ```
 
 Query IDs are embedded in filenames (`{id}-{slug}.{ext}`), so no separate config file is needed.
+Snippet filenames use `{id}-{trigger}.{ext}` (Redash snippets are keyed by `trigger`, not `name`).
 
 ## Development
 
