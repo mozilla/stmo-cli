@@ -8,6 +8,7 @@ pub mod execute;
 pub mod fetch;
 pub mod init;
 pub mod schedule;
+pub mod snippets;
 pub mod update;
 
 use anyhow::{Result, bail};

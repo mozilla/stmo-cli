@@ -4,7 +4,7 @@ Redash CLI that gives Claude Code direct access to sql.telemetry.mozilla.org —
 
 ## Quick Reference
 
-**Commands**: `discover [--search TEXT] [--limit N]` `init` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule`
+**Commands**: `discover [--search TEXT] [--limit N]` `init` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule` `snippets`
 **Env Vars**: `REDASH_API_KEY` (required), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
 ## Key Constraints
@@ -36,7 +36,8 @@ src/
     ├── datasources.rs   # List/explore data sources
     ├── archive.rs       # Archive/unarchive queries
     ├── schedule.rs      # Set/clear query refresh schedules (local YAML only; deploy to push)
-    └── dashboards.rs    # Dashboard management
+    ├── dashboards.rs    # Dashboard management
+    └── snippets.rs      # Query snippet management (no archive concept — delete is direct)
 ```
 
 ## Data Models
@@ -47,6 +48,9 @@ src/
 **CreateQuery**: For query id=0 workflow (new query creation)
 **DataSource**: id, name, ds_type, syntax, paused, view_only
 **JobStatus**: Pending=1, Started=2, Success=3, Failure=4, Cancelled=5
+**QuerySnippet**: Full Redash snippet (id, trigger, description, snippet, user, timestamps)
+**SnippetMetadata**: YAML variant (id, trigger, description only — no user/timestamps)
+**CreateQuerySnippet**: For snippet id=0 workflow (new snippet creation)
 
 ## API Client (api.rs)
 
@@ -57,6 +61,7 @@ src/
 **Data Source**: list_data_sources, get_data_source, get_data_source_schema
 **Archive**: archive_query, unarchive_query
 **Widget**: create_widget, update_widget, delete_widget
+**Query Snippet**: list_query_snippets, get_query_snippet, create_query_snippet, update_query_snippet, delete_query_snippet
 **HTTP**: get_json, post_json
 **Errors**: ensure_success
 

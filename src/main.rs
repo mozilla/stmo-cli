@@ -147,6 +147,12 @@ enum Commands {
         command: DashboardCommands,
     },
 
+    #[command(about = "Manage Redash query snippets")]
+    Snippets {
+        #[command(subcommand)]
+        command: SnippetCommands,
+    },
+
     #[command(
         about = "Set or clear a query's refresh schedule (updates local YAML; run 'deploy' to push to Redash)",
         long_about = "Set or clear a query's refresh schedule.\n\nUpdates the schedule field in each query's local YAML file. The change is not pushed to Redash until you run 'stmo-cli deploy'.\n\nExamples:\n  stmo-cli schedule 123 456 --interval 86400 --time 07:15\n  stmo-cli schedule 123 --clear"
@@ -221,6 +227,37 @@ enum DashboardCommands {
             help = "Dashboard slugs to unarchive (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)"
         )]
         slugs: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SnippetCommands {
+    #[command(about = "List query snippets from Redash")]
+    List,
+
+    #[command(about = "Fetch query snippets from Redash")]
+    Fetch {
+        #[arg(help = "Snippet IDs to fetch (e.g., 31 42)")]
+        snippet_ids: Vec<u64>,
+        #[arg(
+            long,
+            help = "Fetch all snippets currently tracked in snippets/ directory"
+        )]
+        all: bool,
+    },
+
+    #[command(about = "Deploy local changes to Redash (only changed snippets by default)")]
+    Deploy {
+        #[arg(help = "Snippet IDs to deploy (e.g., 31 42)")]
+        snippet_ids: Vec<u64>,
+        #[arg(long, help = "Deploy all snippets instead of only changed ones")]
+        all: bool,
+    },
+
+    #[command(about = "Delete query snippets in Redash and remove local files")]
+    Delete {
+        #[arg(help = "Snippet IDs to delete (e.g., 31 42)")]
+        snippet_ids: Vec<u64>,
     },
 }
 
@@ -338,6 +375,23 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
                 commands::dashboards::unarchive(&client, slugs).await?;
             }
         },
+        Commands::Snippets { command } => match command {
+            SnippetCommands::List => commands::snippets::list(&client).await?,
+            SnippetCommands::Fetch { snippet_ids, all } => {
+                commands::snippets::fetch(&client, snippet_ids, all).await?;
+            }
+            SnippetCommands::Deploy { snippet_ids, all } => {
+                commands::snippets::deploy(&client, snippet_ids, all).await?;
+            }
+            SnippetCommands::Delete { snippet_ids } => {
+                if snippet_ids.is_empty() {
+                    anyhow::bail!(
+                        "No snippet IDs specified. Provide snippet IDs to delete.\n\nExample:\n  stmo-cli snippets delete 31 42"
+                    );
+                }
+                commands::snippets::delete(&client, snippet_ids).await?;
+            }
+        },
     }
     Ok(())
 }
@@ -359,6 +413,7 @@ discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all
 execute --data-source ID [--file PATH|-] [--param k=v]...: ad-hoc SQL from a file or stdin ('-' or omit --file = read stdin), no tracked query created (no schema, so no d_* dates or multi-value expansion — inline values in the SQL)
 data-sources [ID] [--schema] [--refresh] | archive IDs | archive --cleanup | unarchive IDs | init | update
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
+snippets list|fetch [IDs] [--all]|deploy [IDs] [--all]|delete IDs
 
 schedule IDs --interval SECS [--time HH:MM] [--day-of-week N] | schedule IDs --clear (writes YAML; run deploy to push)
 deploy: uses git diff by default; --all required outside a git repo
@@ -366,7 +421,8 @@ execute ID: deploys local .sql/.yaml first if it differs from the server-stored 
 archive IDs: archives on server + deletes local | archive --cleanup: deletes local only for already-archived (does NOT archive on server)
 dashboards: addressed by slug not ID; only favorited dashboards appear in dashboards discover
 
-Files: queries/<id>-<slug>.sql + .yaml, dashboards/<id>-<slug>.yaml | id=0 for new resources, auto-renamed after first deploy
+Files: queries/<id>-<slug>.sql + .yaml, dashboards/<id>-<slug>.yaml, snippets/<id>-<trigger>.sql + .yaml | id=0 for new resources, auto-renamed after first deploy
+snippets: no archive concept in Redash — delete IDs removes on server + local files (irreversible, unlike archive)
 Required YAML fields: id name data_source_id options.parameters(can be []) visualizations(can be [])
 Slug from name: lowercase, non-alphanum→'-', collapse dashes (e.g. "Mozilla's .rpm"→"mozilla-s-rpm")
 enumOptions: use YAML multiline (|-), NOT escaped \n or deploy fails
