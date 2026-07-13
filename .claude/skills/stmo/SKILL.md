@@ -197,12 +197,26 @@ Dashboards are addressed by slug, not ID. See `stmo-cli --help` for the full `da
 
 Create: `dashboards/0-{slug}.yaml` with `id: 0`, deploy, file auto-renames with real ID.
 
+## Query snippets
+
+Redash [query snippets](https://redash.io/help/user-guide/querying/query-snippets) are reusable SQL fragments (e.g. a shared set of CTEs) that get pasted into a query's editor by typing their `trigger`. Pasting is a one-time text expansion, not a live reference — editing a snippet later does **not** update queries that already pasted it; re-paste (or hand-edit) each affected query after changing a snippet it's used in.
+
+Snippet files are keyed by `trigger`, not `slug`: `snippets/{id}-{trigger}.sql` (the fragment body) + `snippets/{id}-{trigger}.yaml` (metadata: `id`, `trigger`, `description`).
+
+The `.sql` file is **not standalone SQL** — it's a bare list of CTEs (no leading `WITH`, no trailing `SELECT`) meant to be pasted into a larger query, so it can't be run or linted on its own.
+
+**Create a new snippet:** create `snippets/0-{trigger}.sql` + `snippets/0-{trigger}.yaml` with `id: 0`, then `stmo-cli snippets deploy 0` — same auto-rename-to-real-ID pattern as queries and dashboards.
+
+Snippets have no archive concept in Redash: `stmo-cli snippets delete <ids>` removes the snippet on the server **and** deletes the local files in one irreversible step — there's no `unarchive` equivalent. See `stmo-cli --help` for the full `snippets` subcommand list (`list`, `fetch`, `deploy`, `delete`).
+
 ## File format
 
 ```
-queries/{id}-{slug}.sql    # SQL text
-queries/{id}-{slug}.yaml   # metadata: name, data_source_id, options, visualizations
+queries/{id}-{slug}.sql       # SQL text
+queries/{id}-{slug}.yaml      # metadata: name, data_source_id, options, visualizations
 dashboards/{id}-{slug}.yaml
+snippets/{id}-{trigger}.sql   # fragment body (not standalone SQL — see "Query snippets" above)
+snippets/{id}-{trigger}.yaml  # metadata: id, trigger, description
 ```
 
-New queries/dashboards use `id: 0` in the filename until deployed.
+New queries/dashboards/snippets use `id: 0` in the filename until deployed.
