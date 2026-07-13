@@ -29,25 +29,41 @@ if [[ ! -d "$firefox_dir/.git" ]]; then
     exit 1
 fi
 
-dest_dir="$firefox_dir/.claude/skills/stmo"
-dest="$dest_dir/SKILL.md"
+# Firefox mirrors in-tree skills under both .claude/skills and .agents/skills and enforces
+# they stay byte-identical via the agent-skills-sync linter (bug 2015814) — every destination
+# must be updated together or CI fails.
+dest_rel_paths=(
+    ".claude/skills/stmo/SKILL.md"
+    ".agents/skills/stmo/SKILL.md"
+)
 
-if [[ -f "$dest" ]] && diff -q "$src" "$dest" >/dev/null 2>&1; then
+changed=0
+for rel_path in "${dest_rel_paths[@]}"; do
+    dest="$firefox_dir/$rel_path"
+    if [[ ! -f "$dest" ]] || ! diff -q "$src" "$dest" >/dev/null 2>&1; then
+        changed=1
+    fi
+done
+
+if [[ "$changed" -eq 0 ]]; then
     echo "SKILL.md is already up to date in $firefox_dir"
     exit 0
 fi
 
-mkdir -p "$dest_dir"
-cp "$src" "$dest"
+for rel_path in "${dest_rel_paths[@]}"; do
+    dest="$firefox_dir/$rel_path"
+    mkdir -p "$(dirname "$dest")"
+    cp "$src" "$dest"
+done
 
 stmo_cli_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$repo_root/Cargo.toml" | head -1)"
 
-commit_subject="Update stmo Claude skill to match stmo-cli $stmo_cli_version"
+commit_subject="Update stmo skill to match stmo-cli $stmo_cli_version"
 if [[ -n "$bug_number" ]]; then
     commit_subject="Bug $bug_number - $commit_subject"
 fi
 
-git -C "$firefox_dir" add .claude/skills/stmo/SKILL.md
+git -C "$firefox_dir" add "${dest_rel_paths[@]}"
 git -C "$firefox_dir" commit -m "$commit_subject"
 
 commit_sha="$(git -C "$firefox_dir" rev-parse --short HEAD)"
@@ -58,7 +74,7 @@ Committed $commit_sha in $firefox_dir:
   $commit_subject
 
 Next step (not run automatically):
-  moz-phab submit --no-wip --single $commit_sha --test-plan "Docs-only change: synced .claude/skills/stmo/SKILL.md from stmo-cli $stmo_cli_version via scripts/sync-firefox-skill.sh. No functional change to Firefox."
+  moz-phab submit --no-wip --single $commit_sha --test-plan "Docs-only change: synced ${dest_rel_paths[0]} and ${dest_rel_paths[1]} from stmo-cli $stmo_cli_version via scripts/sync-firefox-skill.sh. No functional change to Firefox."
 
 Then set the "testing-exception-unchanged" Testing Policy project tag on the
 revision via the Phabricator web UI (docs-only change, no behavior change).

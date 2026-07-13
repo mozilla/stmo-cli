@@ -65,9 +65,11 @@ shipped).
    ```bash
    scripts/sync-firefox-skill.sh <path-to-local-firefox-checkout> [bug-number]
    ```
-   This copies the vendored `SKILL.md`, stages it, and creates a commit in the
-   firefox checkout. It does **not** run `moz-phab` — it prints the exact
-   command to run next.
+   This copies the vendored `SKILL.md` to both `.claude/skills/stmo/SKILL.md`
+   and `.agents/skills/stmo/SKILL.md` in the firefox checkout (firefox's
+   `agent-skills-sync` linter requires the two to stay byte-identical), stages
+   both, and creates one commit. It does **not** run `moz-phab` — it prints
+   the exact command to run next.
 
 6. **Stop and hand off to the human** for the Phabricator submission — do not
    run `moz-phab submit` automatically. Report the printed `moz-phab submit`

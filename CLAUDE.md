@@ -155,7 +155,9 @@ Group entries under `### Features` and `### Fixes`.
 9. Publish to crates.io: `cargo publish`
 10. Verify: `cargo binstall --dry-run stmo-cli`
 11. Sync the firefox skill: run `scripts/sync-firefox-skill.sh <firefox-checkout> [bug-number]`
-    (or invoke the `update-stmo-skill` skill) to update
-    `mozilla-firefox/firefox/.claude/skills/stmo/SKILL.md` and prepare a moz-phab
+    (or invoke the `update-stmo-skill` skill) to update both
+    `mozilla-firefox/firefox/.claude/skills/stmo/SKILL.md` and
+    `mozilla-firefox/firefox/.agents/skills/stmo/SKILL.md` (firefox mirrors the two and
+    enforces they match via its `agent-skills-sync` linter) and prepare a moz-phab
     submission. See `.claude/skills/stmo/SKILL.md` (vendored canonical copy) and
     `.claude/skills/update-stmo-skill/SKILL.md`.
