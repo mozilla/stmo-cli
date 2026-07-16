@@ -4,6 +4,7 @@
 
 ### Fixes
 - `execute`: cancel the Redash job when it times out or is interrupted (Ctrl-C), instead of leaving it running server-side with nobody waiting for the result ([#21](https://github.com/mozilla/stmo-cli/issues/21))
+- `execute --format table`: fix a panic when truncating a cell containing multi-byte, non-ASCII characters near the truncation boundary
 
 ## [0.9.0] - 2026-07-16
 
