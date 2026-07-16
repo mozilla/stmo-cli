@@ -257,8 +257,9 @@ fn format_results_table(result: &crate::models::QueryResult, limit: Option<usize
                     })
                     .unwrap_or_default();
 
-                let truncated = if value.len() > 18 {
-                    format!("{}...", &value[..15])
+                let truncated = if value.chars().count() > 18 {
+                    let prefix: String = value.chars().take(15).collect();
+                    format!("{prefix}...")
                 } else {
                     value
                 };
@@ -916,6 +917,27 @@ mod tests {
         let table = format_results_table(&result, None);
 
         assert!(table.contains("..."));
+    }
+
+    #[test]
+    fn test_format_results_table_truncation_multibyte_char_boundary() {
+        let result = QueryResult {
+            id: 1,
+            data: QueryResultData {
+                columns: vec![Column {
+                    name: "col1".to_string(),
+                    type_name: Some("string".to_string()),
+                    friendly_name: None,
+                }],
+                rows: vec![serde_json::json!({"col1": "ñ".repeat(20)})],
+            },
+            runtime: 1.0,
+            retrieved_at: "2026-01-21T10:00:00".to_string(),
+        };
+
+        let table = format_results_table(&result, None);
+
+        assert!(table.contains("ñ"));
     }
 
     #[test]
