@@ -1,4 +1,6 @@
 /target
+/xtask/target
+/xtask/Cargo.lock
 *.gpg
 **.local.*
 .claude/worktrees/

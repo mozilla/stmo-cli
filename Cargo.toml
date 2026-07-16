@@ -1,10 +1,13 @@
+[workspace]
+members = ["xtask"]
+
 [package]
 name = "stmo-cli"
 version = "0.9.0"
 edition = "2024"
 description = "Turn Claude Code into a data analyst on sql.telemetry.mozilla.org"
 license = "MPL-2.0"
-repository = "https://github.com/JohanLorenzo/stmo-cli"
+repository = "https://github.com/mozilla/stmo-cli"
 readme = "README.md"
 keywords = ["redash", "cli", "sql", "version-control"]
 categories = ["command-line-utilities"]
@@ -12,6 +15,9 @@ exclude = [
     "/CLAUDE.md",
     "/.pre-commit-config.yaml",
     "/.claude",
+    "/xtask",
+    "/.cargo",
+    "/scripts",
 ]
 
 [package.metadata.binstall]

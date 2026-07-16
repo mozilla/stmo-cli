@@ -18,7 +18,7 @@ jobs:
     - uses: dtolnay/rust-toolchain@stable
     - uses: Swatinem/rust-cache@v2
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --workspace --verbose
 
   fmt:
     name: Rustfmt
@@ -41,7 +41,7 @@ jobs:
         components: clippy
     - uses: Swatinem/rust-cache@v2
     - name: Run clippy
-      run: cargo clippy --all-targets --all-features -- -W clippy::pedantic -D warnings
+      run: cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -D warnings
 
   build:
     name: Build
@@ -54,6 +54,6 @@ jobs:
     - uses: dtolnay/rust-toolchain@stable
     - uses: Swatinem/rust-cache@v2
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --workspace --verbose
     - name: Build release
-      run: cargo build --release --verbose
+      run: cargo build --release --workspace --verbose
