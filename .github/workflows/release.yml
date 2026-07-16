@@ -15,22 +15,21 @@ jobs:
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      version: ${{ steps.get_version.outputs.version }}
     steps:
-      - name: Get version from tag
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Extract changelog notes
+        run: cargo run -p xtask -- extract-changelog ${{ github.ref_name }} > release-notes.md
 
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
+          body_path: release-notes.md
           draft: false
           prerelease: false
 
@@ -84,7 +83,7 @@ jobs:
           sudo apt-get install -y musl-tools
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release -p stmo-cli --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
@@ -92,34 +91,19 @@ jobs:
         if: matrix.archive == 'tar.gz'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf stmo-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz stmo-cli
-          mv stmo-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz ${{ github.workspace }}
+          tar czf stmo-cli-${{ github.ref_name }}-${{ matrix.target }}.tar.gz stmo-cli
+          mv stmo-cli-${{ github.ref_name }}-${{ matrix.target }}.tar.gz ${{ github.workspace }}
 
       - name: Package (Windows)
         if: matrix.archive == 'zip'
         run: |
           cd target/${{ matrix.target }}/release
-          7z a stmo-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.zip stmo-cli.exe
-          mv stmo-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.zip ${{ github.workspace }}
+          7z a stmo-cli-${{ github.ref_name }}-${{ matrix.target }}.zip stmo-cli.exe
+          mv stmo-cli-${{ github.ref_name }}-${{ matrix.target }}.zip ${{ github.workspace }}
 
-      - name: Upload Release Asset (Unix)
-        if: matrix.archive == 'tar.gz'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v3
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./stmo-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
-          asset_name: stmo-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
-          asset_content_type: application/gzip
-
-      - name: Upload Release Asset (Windows)
-        if: matrix.archive == 'zip'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./stmo-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.zip
-          asset_name: stmo-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.zip
-          asset_content_type: application/zip
+          tag_name: ${{ github.ref_name }}
+          files: stmo-cli-${{ github.ref_name }}-${{ matrix.target }}.*
+          fail_on_unmatched_files: true
