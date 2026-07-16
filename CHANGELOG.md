@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.9.0] - 2026-07-16
 
 ### Features
 - `execute --data-source ID`: run arbitrary SQL against a data source (stdin or `--file PATH`), creating no stored query
