@@ -93,6 +93,25 @@ pub fn mock_poll_job_failure(job_id: &str, error_msg: &str) -> Mock {
         })))
 }
 
+pub fn mock_poll_job_server_error(job_id: &str) -> Mock {
+    Mock::given(method("GET"))
+        .and(path(format!("/api/jobs/{job_id}")))
+        .respond_with(ResponseTemplate::new(500))
+}
+
+pub fn mock_cancel_job(job_id: &str) -> Mock {
+    Mock::given(method("DELETE"))
+        .and(path(format!("/api/jobs/{job_id}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "job": {
+                "id": job_id,
+                "status": 5,
+                "query_result_id": null,
+                "error": null
+            }
+        })))
+}
+
 pub fn mock_get_query_result(query_id: u64, result_id: u64) -> Mock {
     Mock::given(method("GET"))
         .and(path(format!(

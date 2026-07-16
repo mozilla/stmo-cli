@@ -191,6 +191,109 @@ async fn test_execute_query_with_polling_timeout() {
 }
 
 #[tokio::test]
+async fn test_execute_query_with_polling_timeout_cancels_abandoned_job() {
+    let mock_server = MockServer::start().await;
+
+    mock_refresh_query(123, "test-job-id")
+        .mount(&mock_server)
+        .await;
+
+    mock_poll_job_pending("test-job-id")
+        .mount(&mock_server)
+        .await;
+
+    mock_cancel_job("test-job-id")
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let result = client.execute_query_with_polling(123, None, 1, 100).await;
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("timed out"));
+}
+
+#[tokio::test]
+async fn test_execute_query_with_polling_poll_error_cancels_abandoned_job() {
+    let mock_server = MockServer::start().await;
+
+    mock_refresh_query(123, "test-job-id")
+        .mount(&mock_server)
+        .await;
+
+    mock_poll_job_server_error("test-job-id")
+        .mount(&mock_server)
+        .await;
+
+    mock_cancel_job("test-job-id")
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let result = client.execute_query_with_polling(123, None, 10, 100).await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_execute_query_with_polling_success_does_not_cancel_job() {
+    let mock_server = MockServer::start().await;
+
+    mock_refresh_query(123, "test-job-id")
+        .mount(&mock_server)
+        .await;
+
+    mock_poll_job_success("test-job-id", 456)
+        .mount(&mock_server)
+        .await;
+
+    mock_get_query_result(123, 456).mount(&mock_server).await;
+
+    mock_cancel_job("test-job-id")
+        .expect(0)
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let result = client.execute_query_with_polling(123, None, 10, 100).await;
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_cancel_job_success() {
+    let mock_server = MockServer::start().await;
+
+    mock_cancel_job("test-job-id")
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let result = client.cancel_job("test-job-id").await;
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_cancel_job_error() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("DELETE"))
+        .and(path("/api/jobs/test-job-id"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+    let result = client.cancel_job("test-job-id").await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
 async fn test_refresh_adhoc_query_success() {
     let mock_server = MockServer::start().await;
 

@@ -204,6 +204,20 @@ impl RedashClient {
         Ok(job_response.job)
     }
 
+    pub async fn cancel_job(&self, job_id: &str) -> Result<()> {
+        let url = format!("{}/api/jobs/{job_id}", self.base_url);
+        let response = self
+            .client
+            .delete(&url)
+            .send()
+            .await
+            .context(format!("Failed to cancel job {job_id}"))?;
+
+        ensure_success(response).await?;
+
+        Ok(())
+    }
+
     async fn fetch_query_result(
         &self,
         url: &str,
@@ -262,6 +276,32 @@ impl RedashClient {
     }
 
     async fn poll_job_to_completion(
+        &self,
+        job: crate::models::Job,
+        timeout_secs: u64,
+        poll_interval_ms: u64,
+    ) -> Result<u64> {
+        let job_id = job.id.clone();
+
+        let outcome = tokio::select! {
+            res = self.poll_loop(job, timeout_secs, poll_interval_ms) => res,
+            () = wait_for_ctrl_c() => Err(anyhow::anyhow!("Interrupted; cancelling query")),
+        };
+
+        // Best-effort: a job that reached Success needs no cancellation, and cancelling
+        // one that already reached Failure/Cancelled is a harmless no-op. A failed
+        // cancel must never mask the original timeout/interrupt/poll error.
+        if outcome.is_err() {
+            eprintln!("\nCancelling job {job_id}...");
+            if let Err(e) = self.cancel_job(&job_id).await {
+                eprintln!("Warning: failed to cancel job {job_id}: {e}");
+            }
+        }
+
+        outcome
+    }
+
+    async fn poll_loop(
         &self,
         job: crate::models::Job,
         timeout_secs: u64,
@@ -658,4 +698,8 @@ async fn ensure_success(response: reqwest::Response) -> Result<reqwest::Response
         anyhow::bail!("API error {status}: {body}");
     }
     Ok(response)
+}
+
+async fn wait_for_ctrl_c() {
+    let _ = tokio::signal::ctrl_c().await;
 }
