@@ -779,12 +779,12 @@ mod tests {
                 columns: vec![
                     Column {
                         name: "col1".to_string(),
-                        type_name: "string".to_string(),
+                        type_name: Some("string".to_string()),
                         friendly_name: None,
                     },
                     Column {
                         name: "col2".to_string(),
-                        type_name: "integer".to_string(),
+                        type_name: Some("integer".to_string()),
                         friendly_name: None,
                     },
                 ],
@@ -813,7 +813,7 @@ mod tests {
             data: QueryResultData {
                 columns: vec![Column {
                     name: "col1".to_string(),
-                    type_name: "string".to_string(),
+                    type_name: Some("string".to_string()),
                     friendly_name: None,
                 }],
                 rows: vec![
@@ -840,12 +840,12 @@ mod tests {
                 columns: vec![
                     Column {
                         name: "col1".to_string(),
-                        type_name: "string".to_string(),
+                        type_name: Some("string".to_string()),
                         friendly_name: None,
                     },
                     Column {
                         name: "col2".to_string(),
-                        type_name: "integer".to_string(),
+                        type_name: Some("integer".to_string()),
                         friendly_name: None,
                     },
                 ],
@@ -874,7 +874,7 @@ mod tests {
             data: QueryResultData {
                 columns: vec![Column {
                     name: "col1".to_string(),
-                    type_name: "string".to_string(),
+                    type_name: Some("string".to_string()),
                     friendly_name: None,
                 }],
                 rows: vec![
@@ -902,7 +902,7 @@ mod tests {
             data: QueryResultData {
                 columns: vec![Column {
                     name: "col1".to_string(),
-                    type_name: "string".to_string(),
+                    type_name: Some("string".to_string()),
                     friendly_name: None,
                 }],
                 rows: vec![

@@ -337,7 +337,7 @@ pub struct QueryResultData {
 pub struct Column {
     pub name: String,
     #[serde(rename = "type")]
-    pub type_name: String,
+    pub type_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub friendly_name: Option<String>,
 }
@@ -1181,5 +1181,24 @@ options:
     fn test_schedule_interval_absent() {
         let s: Schedule = serde_json::from_str(r"{}").unwrap();
         assert_eq!(s.interval, None);
+    }
+
+    #[test]
+    fn test_column_type_null() {
+        let c: Column = serde_json::from_str(
+            r#"{"name": "revision", "friendly_name": "revision", "type": null}"#,
+        )
+        .unwrap();
+        assert_eq!(c.name, "revision");
+        assert_eq!(c.type_name, None);
+    }
+
+    #[test]
+    fn test_column_type_present() {
+        let c: Column = serde_json::from_str(
+            r#"{"name": "time", "friendly_name": "time", "type": "datetime"}"#,
+        )
+        .unwrap();
+        assert_eq!(c.type_name, Some("datetime".to_string()));
     }
 }
