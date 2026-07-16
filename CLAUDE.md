@@ -142,22 +142,52 @@ Only include user-facing changes. Internal changes (test fixes, code formatting,
 updates, CI improvements) should be omitted unless they affect user-visible behavior.
 Group entries under `### Features` and `### Fixes`.
 
+Curate the `## [Unreleased]` section's content (this is a human judgment call) before
+running `prepare-release` below — it only dates and renames the heading, it does not
+compose the entries.
+
 ### Steps
 
-1. Update `CHANGELOG.md` with a new version section
-2. Bump `version` in `Cargo.toml`
-3. Commit as `Release X.Y.Z`
-4. Push to main: `git push origin main`
-5. Create signed tag: `git tag -s X.Y.Z -m "X.Y.Z"` (tag message is the bare version)
-6. Push tag: `git push origin X.Y.Z`
-7. Wait for release workflow to create GitHub Release with binaries
-8. Add changelog to release: `gh release edit X.Y.Z --notes "..."`
-9. Publish to crates.io: `cargo publish`
-10. Verify: `cargo binstall --dry-run stmo-cli`
-11. Sync the firefox skill: run `scripts/sync-firefox-skill.sh <firefox-checkout> [bug-number]`
-    (or invoke the `update-stmo-skill` skill) to update both
-    `mozilla-firefox/firefox/.claude/skills/stmo/SKILL.md` and
-    `mozilla-firefox/firefox/.agents/skills/stmo/SKILL.md` (firefox mirrors the two and
-    enforces they match via its `agent-skills-sync` linter) and prepare a moz-phab
-    submission. See `.claude/skills/stmo/SKILL.md` (vendored canonical copy) and
-    `.claude/skills/update-stmo-skill/SKILL.md`.
+Release tooling lives in the `xtask` crate (`cargo xtask --help` for the full list).
+`origin` is the fork (`JohanLorenzo/stmo-cli-fork`); `upstream` is the canonical repo
+(`mozilla/stmo-cli`). A repo-safety hook blocks direct pushes to `upstream` for
+branches, so the PR flow below goes through the fork — but it does **not** block
+pushing a signed tag, which is why tagging stays a manual, deliberate step.
+
+1. `cargo xtask prepare-release X.Y.Z` — bumps `Cargo.toml`, dates the CHANGELOG
+   `Unreleased` heading, runs the full gate (`cargo test`/`clippy`/`fmt --check`), and
+   commits as `Release X.Y.Z` on a new `release-X.Y.Z` branch. Requires a clean tree on
+   `main` synced with `upstream/main`.
+2. `cargo xtask cut-release X.Y.Z` — pushes `release-X.Y.Z` to `origin` and opens a
+   **draft** PR against `mozilla/stmo-cli` `main`. Review and merge it.
+3. After merge, sync `main` and cut the signed tag yourself:
+   ```
+   git checkout main && git fetch upstream && git reset --hard upstream/main
+   git tag -s X.Y.Z -m "X.Y.Z"
+   git push upstream X.Y.Z
+   ```
+4. CI (`release.yml`) takes over from the tag: it validates the tag looks like a
+   version, creates the GitHub Release with notes extracted straight from
+   `CHANGELOG.md` (`cargo xtask extract-changelog X.Y.Z` — no more manual
+   `gh release edit --notes`), builds and attaches all 6 target binaries, then
+   publishes to crates.io via Trusted Publishing (OIDC, no stored token).
+5. Verify: `cargo binstall --dry-run stmo-cli`.
+6. **Only if this release changed a user-facing command, flag, or workflow:** sync the
+   firefox skill — run `scripts/sync-firefox-skill.sh <firefox-checkout> [bug-number]`
+   (or invoke the `update-stmo-skill` skill) to update both
+   `mozilla-firefox/firefox/.claude/skills/stmo/SKILL.md` and
+   `mozilla-firefox/firefox/.agents/skills/stmo/SKILL.md` (firefox mirrors the two and
+   enforces they match via its `agent-skills-sync` linter) and prepare a moz-phab
+   submission. See `.claude/skills/stmo/SKILL.md` (vendored canonical copy) and
+   `.claude/skills/update-stmo-skill/SKILL.md`.
+
+**One-time setup:** the crates.io publish step requires a Trusted Publisher configured
+for the `stmo-cli` crate (crates.io → package settings → Trusted Publishing → GitHub
+repo `mozilla/stmo-cli`, workflow `release.yml`). If it's missing or misconfigured, the
+`publish` job fails but the GitHub Release and binaries from the earlier jobs still
+stand — fall back to a local `cargo publish` and fix the Trusted Publisher config
+before the next release.
+
+**Re-running a tag:** crates.io versions are immutable, so re-pushing an
+already-published tag makes `cargo publish` fail as expected; the GitHub Release and
+binaries still regenerate cleanly.
