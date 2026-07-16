@@ -57,6 +57,28 @@ for rel_path in "${dest_rel_paths[@]}"; do
 done
 
 stmo_cli_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$repo_root/Cargo.toml" | head -1)"
+repo_sha="$(git -C "$repo_root" rev-parse HEAD)"
+
+# The test plan should link reviewers straight to the source content, but only once it's
+# actually merged to mozilla/stmo-cli main — otherwise the link is dead for anyone without
+# access to whatever fork/branch this checkout happens to be on. Checking via the GitHub
+# API is not reliable here: forks share object storage with their upstream, so
+# api.github.com/repos/mozilla/stmo-cli/commits/<sha> returns 200 for commits that only
+# exist on a fork and were never actually merged. Verify real ancestry instead.
+permalink=""
+if git -C "$repo_root" fetch --quiet https://github.com/mozilla/stmo-cli.git main 2>/dev/null \
+    && git -C "$repo_root" merge-base --is-ancestor "$repo_sha" FETCH_HEAD 2>/dev/null; then
+    permalink="https://github.com/mozilla/stmo-cli/blob/$repo_sha/.claude/skills/stmo/SKILL.md"
+else
+    echo "warning: $repo_sha is not on mozilla/stmo-cli main yet — omitting the source permalink from the test plan. Merge to main first, then re-run to get one." >&2
+fi
+
+test_plan="Docs-only change: synced ${dest_rel_paths[0]} and ${dest_rel_paths[1]} from stmo-cli $stmo_cli_version"
+if [[ -n "$permalink" ]]; then
+    test_plan="$test_plan ([SKILL.md]($permalink))."
+else
+    test_plan="$test_plan."
+fi
 
 commit_subject="Update stmo skill to match stmo-cli $stmo_cli_version"
 if [[ -n "$bug_number" ]]; then
@@ -74,7 +96,7 @@ Committed $commit_sha in $firefox_dir:
   $commit_subject
 
 Next step (not run automatically):
-  moz-phab submit --no-wip --single $commit_sha --test-plan "Docs-only change: synced ${dest_rel_paths[0]} and ${dest_rel_paths[1]} from stmo-cli $stmo_cli_version via scripts/sync-firefox-skill.sh. No functional change to Firefox."
+  moz-phab submit --no-wip --single $commit_sha --test-plan "$test_plan"
 
 Then set the "testing-exception-unchanged" Testing Policy project tag on the
 revision via the Phabricator web UI (docs-only change, no behavior change).
