@@ -1,6 +1,6 @@
 [package]
 name = "stmo-cli"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 description = "Turn Claude Code into a data analyst on sql.telemetry.mozilla.org"
 license = "MPL-2.0"
