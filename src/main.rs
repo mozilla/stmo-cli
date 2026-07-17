@@ -1,5 +1,6 @@
 mod api;
 mod commands;
+mod config;
 mod models;
 
 use anyhow::{Context, Result};
@@ -188,6 +189,9 @@ enum Commands {
 
     #[command(about = "Update stmo-cli to the latest version")]
     Update,
+
+    #[command(about = "Store your Redash API key in the macOS Keychain")]
+    Login,
 }
 
 #[derive(Subcommand)]
@@ -267,7 +271,7 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
         Commands::Discover { search, limit } => {
             commands::discover::discover(&client, search.as_deref(), limit).await?;
         }
-        Commands::Init | Commands::Update => unreachable!(),
+        Commands::Init | Commands::Update | Commands::Login => unreachable!(),
         Commands::Fetch { query_ids, all } => {
             commands::fetch::fetch(&client, query_ids, all).await?;
         }
@@ -405,11 +409,12 @@ fn is_llm_environment() -> bool {
 
 const LLM_HELP: &str = r#"stmo-cli — Redash CLI for sql.telemetry.mozilla.org. Explore data sources, run queries, deploy dashboards.
 REDASH_API_KEY required | REDASH_URL optional (default: https://sql.telemetry.mozilla.org)
+On macOS, REDASH_API_KEY falls back to the 'stmo-cli' item in the macOS Keychain; run `stmo-cli login` once in your own terminal to store it there (a Claude Code session has no terminal to prompt in).
 API key: https://sql.telemetry.mozilla.org/users/me → API Key section
 
 discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N] [--timeout SECS]
 execute --data-source ID [--file PATH|-] [--param k=v]...: ad-hoc SQL from a file or stdin ('-' or omit --file = read stdin), no tracked query created (no schema, so no d_* dates or multi-value expansion — inline values in the SQL)
-data-sources [ID] [--schema] [--refresh] [--format table|json] | archive IDs | archive --cleanup | unarchive IDs | init | update
+data-sources [ID] [--schema] [--refresh] [--format table|json] | archive IDs | archive --cleanup | unarchive IDs | init | update | login
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
 snippets list|fetch [IDs] [--all]|deploy [IDs] [--all]|delete IDs
 
@@ -469,8 +474,13 @@ async fn main() -> Result<()> {
         return result;
     }
 
-    let api_key =
-        std::env::var("REDASH_API_KEY").context("REDASH_API_KEY environment variable not set")?;
+    if let Commands::Login = cli.command {
+        let result = config::login();
+        version_checker.print_warning();
+        return result;
+    }
+
+    let api_key = config::resolve_api_key()?;
     let base_url = std::env::var("REDASH_URL")
         .unwrap_or_else(|_| "https://sql.telemetry.mozilla.org".to_string());
     let client = RedashClient::new(base_url, &api_key)?;

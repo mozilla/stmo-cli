@@ -49,11 +49,26 @@ cargo build --release
 
 1. Get your Redash API key from your user profile
 
-2. Set environment variables:
+2. Provide the key:
+
+**On macOS**, run this once in your own terminal (not through Claude Code, which has no
+terminal to prompt in):
+```bash
+stmo-cli login
+```
+This stores the key encrypted in the macOS Keychain (service `stmo-cli`) and reads it
+back automatically from then on — every Claude Code session, every worktree, no env var,
+no manual export. The first `stmo-cli login` (or the first command run with no key set,
+if you're in a terminal) prompts you for the key with a hidden `security` prompt; grant
+"Always Allow" once when macOS asks, and later reads are silent.
+
+**On other platforms**, or if you'd rather manage it yourself, set the environment
+variable directly:
 ```bash
 export REDASH_API_KEY="your-api-key-here"
 export REDASH_URL="https://sql.telemetry.mozilla.org"  # optional, this is the default
 ```
+`REDASH_API_KEY` always takes precedence over the Keychain when set.
 
 For Mozilla, the key can be accessed via the following URL: https://sql.telemetry.mozilla.org/users/me
 
