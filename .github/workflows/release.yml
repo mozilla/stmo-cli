@@ -33,12 +33,12 @@ jobs:
         run: cargo run -p xtask -- extract-changelog ${{ github.ref_name }} > release-notes.md
 
       - name: Create Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          body_path: release-notes.md
-          draft: false
-          prerelease: false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "Release ${{ github.ref_name }}" \
+            --notes-file release-notes.md
 
   build-release:
     name: Build Release
@@ -109,31 +109,6 @@ jobs:
           mv stmo-cli-${{ github.ref_name }}-${{ matrix.target }}.zip ${{ github.workspace }}
 
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: stmo-cli-${{ github.ref_name }}-${{ matrix.target }}.*
-          fail_on_unmatched_files: true
-
-  publish:
-    name: Publish to crates.io
-    needs: build-release
-    if: github.repository == 'mozilla/stmo-cli'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Authenticate with crates.io
-        id: auth
-        uses: rust-lang/crates-io-auth-action@v1
-
-      - name: Publish to crates.io
-        run: cargo publish -p stmo-cli
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload ${{ github.ref_name }} stmo-cli-${{ github.ref_name }}-${{ matrix.target }}.* --clobber

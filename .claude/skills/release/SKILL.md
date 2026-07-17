@@ -2,9 +2,9 @@
 name: release
 description: >
   Cut a new stmo-cli release: curate the changelog, bump the version, open the
-  release PR, tag it, and let CI publish the GitHub Release and crates.io
-  package. Use when the user asks to release, cut a release, ship a new
-  version, or publish stmo-cli.
+  release PR, tag it, let CI publish the GitHub Release with binaries, then
+  publish to crates.io by hand. Use when the user asks to release, cut a
+  release, ship a new version, or publish stmo-cli.
 allowed-tools:
   - Bash(cargo xtask:*)
   - Bash(git checkout:*)
@@ -12,6 +12,7 @@ allowed-tools:
   - Bash(git reset:*)
   - Bash(git tag:*)
   - Bash(git push:*)
+  - Bash(cargo publish:*)
   - Bash(cargo binstall:*)
   - Bash(scripts/sync-firefox-skill.sh:*)
   - Read
@@ -69,11 +70,11 @@ tagging (step 3) is a manual, human-only step for the same reason.
 4. CI (`release.yml`) takes over from the tag: it validates the tag looks
    like a version, creates the GitHub Release with notes extracted straight
    from `CHANGELOG.md` (`cargo xtask extract-changelog X.Y.Z` — no manual
-   `gh release edit --notes`), builds and attaches all 6 target binaries,
-   then publishes to crates.io via Trusted Publishing (OIDC, no stored
-   token).
-5. Verify: `cargo binstall --dry-run stmo-cli`.
-6. **Only if this release changed a user-facing command, flag, or workflow:**
+   `gh release edit --notes`), and builds and attaches all 6 target binaries.
+   It does **not** publish to crates.io — see the note below.
+5. Publish to crates.io yourself: `cargo publish -p stmo-cli`.
+6. Verify: `cargo binstall --dry-run stmo-cli`.
+7. **Only if this release changed a user-facing command, flag, or workflow:**
    sync the firefox skill — run `scripts/sync-firefox-skill.sh
    <firefox-checkout> [bug-number]` (or invoke the `update-stmo-skill` skill)
    to update both `mozilla-firefox/firefox/.claude/skills/stmo/SKILL.md` and
@@ -82,17 +83,27 @@ tagging (step 3) is a manual, human-only step for the same reason.
    prepare a moz-phab submission. See `.claude/skills/stmo/SKILL.md`
    (vendored canonical copy) and `.claude/skills/update-stmo-skill/SKILL.md`.
 
-## One-time setup
+## Why crates.io publish isn't in CI
 
-The crates.io publish step requires a Trusted Publisher configured for the
-`stmo-cli` crate (crates.io → package settings → Trusted Publishing → GitHub
-repo `mozilla/stmo-cli`, workflow `release.yml`). If it's missing or
-misconfigured, the `publish` job fails but the GitHub Release and binaries
-from the earlier jobs still stand — fall back to a local `cargo publish` and
-fix the Trusted Publisher config before the next release.
+It was, briefly (`softprops/action-gh-release` + `rust-lang/crates-io-auth-action`
+via OIDC Trusted Publishing), but Mozilla's GitHub org enforces an actions
+allowlist ([MoCo-GHE-Admin/Approved-GHE-add-ons][allowlist]) and neither
+action is on it. A tag push with either in the workflow fails the whole run
+at `startup_failure` before any job even starts — GitHub-first-party actions
+(`actions/*`) and the pre-approved `dtolnay/rust-toolchain` /
+`Swatinem/rust-cache` are fine, but third-party marketplace actions need a
+[Mozilla security review][bug] first. `release.yml` now uses the `gh` CLI
+directly (preinstalled on all runner images, authenticated via the built-in
+`GITHUB_TOKEN`) for release creation and asset upload instead — that's a
+CLI invocation, not a `uses:` action, so it isn't subject to the allowlist.
+crates.io has no such CLI-only path for Trusted Publishing, so it stays a
+manual `cargo publish` step.
+
+[allowlist]: https://github.com/MoCo-GHE-Admin/Approved-GHE-add-ons/blob/main/GitHub_Actions.md
+[bug]: https://bugzilla.mozilla.org/enter_bug.cgi?product=mozilla.org&component=Github%3A%20Administration
 
 ## Re-running a tag
 
-crates.io versions are immutable, so re-pushing an already-published tag
-makes `cargo publish` fail as expected; the GitHub Release and binaries still
-regenerate cleanly.
+crates.io versions are immutable, so re-running `cargo publish` for an
+already-published version fails as expected; the GitHub Release and binaries
+still regenerate cleanly from a re-tagged commit.
