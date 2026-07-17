@@ -4,8 +4,15 @@ Redash CLI that gives Claude Code direct access to sql.telemetry.mozilla.org —
 
 ## Quick Reference
 
-**Commands**: `discover [--search TEXT] [--limit N]` `init` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule` `snippets`
-**Env Vars**: `REDASH_API_KEY` (required), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
+**Commands**: `discover [--search TEXT] [--limit N]` `init` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule` `snippets` `login`
+**Env Vars**: `REDASH_API_KEY` (required unless stored via `login`), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
+
+On macOS, `REDASH_API_KEY` falls back to the `stmo-cli` item in the macOS Keychain
+(`src/config.rs`) when unset. `stmo-cli login` stores it there via `security
+add-generic-password` (hidden prompt, delegated to `security` so stmo-cli needs no code
+signing/notarization for Keychain access — see `src/config.rs` module doc comment for
+why). `STMO_KEYCHAIN_PATH` overrides the keychain file `security` targets; used by the
+hermetic e2e in `tests/keychain.rs`, otherwise an advanced-only override.
 
 ## Key Constraints
 
