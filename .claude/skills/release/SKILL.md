@@ -39,10 +39,9 @@ heading; it does not compose the entries.
 ## Remotes
 
 `origin` is the fork (`JohanLorenzo/stmo-cli-fork`); `upstream` is the
-canonical repo (`mozilla/stmo-cli`). A repo-safety hook blocks direct pushes to
-`upstream` for branches, so the PR flow below goes through the fork — but it
-does **not** block pushing a signed tag, which is why tagging stays a manual,
-deliberate step.
+canonical repo (`mozilla/stmo-cli`). A repo-safety hook blocks **any** push to
+`upstream` — branch or tag — so the PR flow below goes through the fork, and
+tagging (step 3) is a manual, human-only step for the same reason.
 
 ## Steps
 
@@ -54,12 +53,19 @@ deliberate step.
 2. `cargo xtask cut-release X.Y.Z` — pushes `release-X.Y.Z` to `origin` and
    opens a **draft** PR against `mozilla/stmo-cli` `main`. Review and merge
    it.
-3. After merge, sync `main` and cut the signed tag yourself:
+3. **You run this step, not Claude/the skill.** After the PR merges, sync
+   `main` and cut the signed tag yourself:
    ```
    git checkout main && git fetch upstream && git reset --hard upstream/main
    git tag -s X.Y.Z -m "X.Y.Z"
    git push upstream X.Y.Z
    ```
+   Two separate hard blockers, not a style choice:
+   - **Signing** needs your GPG key and an interactive passphrase/pinentry
+     prompt — Claude has no way to answer that prompt.
+   - **Pushing to `upstream`** is refused outright by the local
+     `check_push_target.py` safety hook, which blocks any push to a
+     non-fork remote — tag or branch — regardless of who's asking.
 4. CI (`release.yml`) takes over from the tag: it validates the tag looks
    like a version, creates the GitHub Release with notes extracted straight
    from `CHANGELOG.md` (`cargo xtask extract-changelog X.Y.Z` — no manual
