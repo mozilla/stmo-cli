@@ -3,7 +3,7 @@
 use crate::api::RedashClient;
 use crate::models::{Query, QueryMetadata, Visualization, VisualizationMetadata};
 use anyhow::{Context, Result, bail};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -174,7 +174,7 @@ fn get_all_query_metadata_from_path(queries_dir: &Path) -> Result<Vec<(u64, Stri
     }
 
     let mut queries = Vec::new();
-    let mut paths_by_id: HashMap<u64, Vec<String>> = HashMap::new();
+    let mut paths_by_target: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for entry in fs::read_dir(queries_dir).context("Failed to read queries directory")? {
         let entry = entry.context("Failed to read directory entry")?;
@@ -187,45 +187,19 @@ fn get_all_query_metadata_from_path(queries_dir: &Path) -> Result<Vec<(u64, Stri
             let metadata: crate::models::QueryMetadata = serde_yaml::from_str(&metadata_content)
                 .context(format!("Failed to parse {}", path.display()))?;
 
-            paths_by_id
-                .entry(metadata.id)
+            paths_by_target
+                .entry(format!("id {}", metadata.id))
                 .or_default()
                 .push(path.display().to_string());
             queries.push((metadata.id, metadata.name));
         }
     }
 
-    bail_on_duplicate_ids(&paths_by_id)?;
+    crate::commands::bail_on_duplicate_targets(&paths_by_target)?;
 
     queries.sort_by_key(|(id, _)| *id);
 
     Ok(queries)
-}
-
-fn bail_on_duplicate_ids(paths_by_id: &HashMap<u64, Vec<String>>) -> Result<()> {
-    let mut conflicts: Vec<_> = paths_by_id
-        .iter()
-        .filter(|(_, paths)| paths.len() > 1)
-        .collect();
-
-    if conflicts.is_empty() {
-        return Ok(());
-    }
-
-    conflicts.sort_by_key(|(id, _)| **id);
-    let details: Vec<String> = conflicts
-        .into_iter()
-        .map(|(id, paths)| {
-            let mut paths = paths.clone();
-            paths.sort();
-            format!("  id {id}: {}", paths.join(", "))
-        })
-        .collect();
-
-    bail!(
-        "Multiple local files claim the same id — resolve the conflict before deploying:\n{}",
-        details.join("\n")
-    );
 }
 
 fn get_all_query_metadata() -> Result<Vec<(u64, String)>> {
@@ -786,7 +760,7 @@ mod tests {
         let result = get_all_query_metadata_from_path(dir);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Multiple local files claim the same id"));
+        assert!(err_msg.contains("Multiple local files resolve to the same target"));
         assert!(err_msg.contains("id 120506"));
         assert!(err_msg.contains("claude-code-direct-reports-model-mix.yaml"));
         assert!(err_msg.contains("claude-code-user-model-mix.yaml"));
