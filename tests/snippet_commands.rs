@@ -263,6 +263,53 @@ async fn test_deploy_new_snippet_with_id_zero() {
 }
 
 #[tokio::test]
+async fn test_deploy_creates_several_new_snippets_in_one_run() {
+    let _guard = get_test_lock().lock().await;
+    let _temp_dir = TempWorkDir::new();
+    let mock_server = wiremock::MockServer::start().await;
+
+    mock_create_query_snippet_with_trigger(42, "first_trigger", "SELECT 1")
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+    mock_create_query_snippet_with_trigger(43, "second_trigger", "SELECT 2")
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+    mock_list_query_snippets(&serde_json::json!([]))
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+
+    std::fs::create_dir_all("snippets").unwrap();
+    std::fs::write("snippets/0-first_trigger.sql", "SELECT 1").unwrap();
+    std::fs::write(
+        "snippets/0-first_trigger.yaml",
+        "id: 0\ntrigger: first_trigger\ndescription: First\n",
+    )
+    .unwrap();
+    std::fs::write("snippets/0-second_trigger.sql", "SELECT 2").unwrap();
+    std::fs::write(
+        "snippets/0-second_trigger.yaml",
+        "id: 0\ntrigger: second_trigger\ndescription: Second\n",
+    )
+    .unwrap();
+
+    let result = stmo_cli::commands::snippets::deploy(&client, vec![], false).await;
+
+    assert!(result.is_ok(), "{:?}", result.unwrap_err());
+    assert!(!std::path::Path::new("snippets/0-first_trigger.yaml").exists());
+    assert!(!std::path::Path::new("snippets/0-second_trigger.yaml").exists());
+    assert!(std::path::Path::new("snippets/42-first_trigger.sql").exists());
+    assert!(std::path::Path::new("snippets/42-first_trigger.yaml").exists());
+    assert!(std::path::Path::new("snippets/43-second_trigger.sql").exists());
+    assert!(std::path::Path::new("snippets/43-second_trigger.yaml").exists());
+
+    mock_server.verify().await;
+}
+
+#[tokio::test]
 async fn test_deploy_existing_snippet_hits_update_path() {
     let _guard = get_test_lock().lock().await;
     let _temp_dir = TempWorkDir::new();

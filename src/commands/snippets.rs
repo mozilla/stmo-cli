@@ -73,6 +73,18 @@ fn extract_snippet_ids_from_directory() -> Result<Vec<u64>> {
     extract_snippet_ids_from_path(Path::new("snippets"))
 }
 
+// `id: 0` means "not created on Redash yet", so it is not an identity — several
+// new snippets legitimately carry it at once. What must stay unique for them is
+// the file base `deploy_one` derives, since two new snippets sharing it would
+// read from and write over the same pair of files.
+fn conflict_target(id: u64, trigger: &str) -> String {
+    if id == 0 {
+        format!("new snippet 0-{trigger}")
+    } else {
+        format!("id {id}")
+    }
+}
+
 fn get_all_snippet_metadata_from_path(snippets_dir: &Path) -> Result<Vec<(u64, String)>> {
     if !snippets_dir.exists() {
         bail!("snippets directory not found. Run 'stmo-cli snippets fetch' first.");
@@ -93,7 +105,7 @@ fn get_all_snippet_metadata_from_path(snippets_dir: &Path) -> Result<Vec<(u64, S
                 .context(format!("Failed to parse {}", path.display()))?;
 
             paths_by_target
-                .entry(format!("id {}", metadata.id))
+                .entry(conflict_target(metadata.id, &metadata.trigger))
                 .or_default()
                 .push(path.display().to_string());
             snippets.push((metadata.id, metadata.trigger));
@@ -681,6 +693,58 @@ mod tests {
         let result = get_all_snippet_metadata_from_path(dir);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Failed to parse"));
+    }
+
+    #[test]
+    fn test_get_all_snippet_metadata_from_path_allows_several_new_snippets() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir = temp_dir.path();
+
+        fs::write(
+            dir.join("0-first_trigger.yaml"),
+            "id: 0\ntrigger: first_trigger\ndescription: null\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("0-second_trigger.yaml"),
+            "id: 0\ntrigger: second_trigger\ndescription: null\n",
+        )
+        .unwrap();
+
+        let mut metadata = get_all_snippet_metadata_from_path(dir).unwrap();
+        metadata.sort();
+        assert_eq!(
+            metadata,
+            vec![
+                (0, "first_trigger".to_string()),
+                (0, "second_trigger".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn test_get_all_snippet_metadata_from_path_rejects_new_snippets_sharing_a_file_base() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir = temp_dir.path();
+
+        fs::write(
+            dir.join("0-same_trigger.yaml"),
+            "id: 0\ntrigger: same_trigger\ndescription: null\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("copy.yaml"),
+            "id: 0\ntrigger: same_trigger\ndescription: null\n",
+        )
+        .unwrap();
+
+        let result = get_all_snippet_metadata_from_path(dir);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Multiple local files resolve to the same target"));
+        assert!(err_msg.contains("new snippet 0-same_trigger"));
+        assert!(err_msg.contains("0-same_trigger.yaml"));
+        assert!(err_msg.contains("copy.yaml"));
     }
 
     #[test]

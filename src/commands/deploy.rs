@@ -168,6 +168,18 @@ async fn find_changed_queries(
     changed_ids
 }
 
+// `id: 0` means "not created on Redash yet", so it is not an identity — several
+// new queries legitimately carry it at once. What must stay unique for them is
+// the file base `deploy_one` derives, since two new queries sharing it would
+// read from and write over the same pair of files.
+fn conflict_target(id: u64, name: &str) -> String {
+    if id == 0 {
+        format!("new query 0-{}", slugify(name))
+    } else {
+        format!("id {id}")
+    }
+}
+
 fn get_all_query_metadata_from_path(queries_dir: &Path) -> Result<Vec<(u64, String)>> {
     if !queries_dir.exists() {
         bail!("queries directory not found. Run 'stmo-cli fetch' first.");
@@ -188,7 +200,7 @@ fn get_all_query_metadata_from_path(queries_dir: &Path) -> Result<Vec<(u64, Stri
                 .context(format!("Failed to parse {}", path.display()))?;
 
             paths_by_target
-                .entry(format!("id {}", metadata.id))
+                .entry(conflict_target(metadata.id, &metadata.name))
                 .or_default()
                 .push(path.display().to_string());
             queries.push((metadata.id, metadata.name));
@@ -737,6 +749,58 @@ mod tests {
                 .to_string()
                 .contains("queries directory not found")
         );
+    }
+
+    #[test]
+    fn test_get_all_query_metadata_from_path_allows_several_new_queries() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let dir = temp_dir.path();
+
+        fs::write(
+            dir.join("0-first-new-query.yaml"),
+            format!("id: 0\nname: first-new-query\n{MINIMAL_QUERY_METADATA_YAML}"),
+        )
+        .unwrap();
+        fs::write(
+            dir.join("0-second-new-query.yaml"),
+            format!("id: 0\nname: second-new-query\n{MINIMAL_QUERY_METADATA_YAML}"),
+        )
+        .unwrap();
+
+        let mut metadata = get_all_query_metadata_from_path(dir).unwrap();
+        metadata.sort();
+        assert_eq!(
+            metadata,
+            vec![
+                (0, "first-new-query".to_string()),
+                (0, "second-new-query".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn test_get_all_query_metadata_from_path_rejects_new_queries_sharing_a_file_base() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let dir = temp_dir.path();
+
+        fs::write(
+            dir.join("0-same-name.yaml"),
+            format!("id: 0\nname: same-name\n{MINIMAL_QUERY_METADATA_YAML}"),
+        )
+        .unwrap();
+        fs::write(
+            dir.join("copy.yaml"),
+            format!("id: 0\nname: Same Name\n{MINIMAL_QUERY_METADATA_YAML}"),
+        )
+        .unwrap();
+
+        let result = get_all_query_metadata_from_path(dir);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Multiple local files resolve to the same target"));
+        assert!(err_msg.contains("new query 0-same-name"));
+        assert!(err_msg.contains("0-same-name.yaml"));
+        assert!(err_msg.contains("copy.yaml"));
     }
 
     #[test]

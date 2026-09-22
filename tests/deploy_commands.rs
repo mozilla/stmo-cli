@@ -93,6 +93,46 @@ async fn test_deploy_new_query_with_id_zero() {
 }
 
 #[tokio::test]
+async fn test_deploy_creates_several_new_queries_in_one_run() {
+    let _guard = get_test_lock().lock().await;
+    let _temp_dir = TempWorkDir::new();
+    let mock_server = wiremock::MockServer::start().await;
+
+    mock_create_query_named(42, "First Query")
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+    mock_create_query_named(43, "Second Query")
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+    mock_get_query(42, "First Query", false)
+        .mount(&mock_server)
+        .await;
+    mock_get_query(43, "Second Query", false)
+        .mount(&mock_server)
+        .await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+
+    std::fs::create_dir_all("queries").unwrap();
+    write_query_files(0, "first-query", "SELECT 1", "First Query");
+    write_query_files(0, "second-query", "SELECT 2", "Second Query");
+
+    let result = stmo_cli::commands::deploy::deploy(&client, vec![], false).await;
+
+    assert!(result.is_ok(), "{:?}", result.unwrap_err());
+    assert!(!std::path::Path::new("queries/0-first-query.yaml").exists());
+    assert!(!std::path::Path::new("queries/0-second-query.yaml").exists());
+    assert!(std::path::Path::new("queries/42-first-query.sql").exists());
+    assert!(std::path::Path::new("queries/42-first-query.yaml").exists());
+    assert!(std::path::Path::new("queries/43-second-query.sql").exists());
+    assert!(std::path::Path::new("queries/43-second-query.yaml").exists());
+
+    mock_server.verify().await;
+}
+
+#[tokio::test]
 async fn test_deploy_bare_always_includes_id_zero() {
     let _guard = get_test_lock().lock().await;
     let _temp_dir = TempWorkDir::new();

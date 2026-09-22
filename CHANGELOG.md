@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixes
+- `deploy` / `snippets deploy`: several new queries/snippets can now be created in one run — the duplicate-id check no longer treats the `id: 0` placeholder as a real id, so two pending files stopped looking like two copies of the same query. Two new files that would resolve to the same filename are still rejected.
+
 ## [0.11.0] - 2026-09-07
 
 ### Features

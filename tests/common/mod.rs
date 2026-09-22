@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 pub struct TestContext {
@@ -790,5 +790,45 @@ pub fn mock_get_query_with_vizs(query_id: u64, name: &str, vizs: &serde_json::Va
             "is_draft": false,
             "updated_at": "2026-01-21T10:00:00",
             "created_at": "2026-01-21T10:00:00"
+        })))
+}
+
+// Deploy order across several `id: 0` files follows `read_dir`, so tests that
+// create more than one new resource in a run must match on the request body
+// rather than on mount order.
+pub fn mock_create_query_named(id: u64, name: &str) -> Mock {
+    Mock::given(method("POST"))
+        .and(path("/api/queries"))
+        .and(body_partial_json(serde_json::json!({"name": name})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": id,
+            "name": name,
+            "description": null,
+            "query": "SELECT 1",
+            "data_source_id": 63,
+            "user": null,
+            "schedule": null,
+            "options": {"parameters": []},
+            "visualizations": [],
+            "tags": null,
+            "is_archived": false,
+            "is_draft": false,
+            "updated_at": "2026-01-21T10:00:00",
+            "created_at": "2026-01-21T10:00:00"
+        })))
+}
+
+pub fn mock_create_query_snippet_with_trigger(id: u64, trigger: &str, snippet_body: &str) -> Mock {
+    Mock::given(method("POST"))
+        .and(path("/api/query_snippets"))
+        .and(body_partial_json(serde_json::json!({"trigger": trigger})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": id,
+            "trigger": trigger,
+            "description": "Test snippet",
+            "snippet": snippet_body,
+            "user": null,
+            "updated_at": "2026-01-21T10:00:00Z",
+            "created_at": "2026-01-21T10:00:00Z"
         })))
 }
