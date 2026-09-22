@@ -13,6 +13,7 @@ pub mod update;
 
 use anyhow::{Result, bail};
 use std::collections::BTreeMap;
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy)]
 pub enum OutputFormat {
@@ -56,5 +57,34 @@ pub(crate) fn bail_on_duplicate_targets(
     bail!(
         "Multiple local files resolve to the same target — resolve the conflict before deploying:\n{}",
         details.join("\n")
+    );
+}
+
+// Deploy addresses a resource by the identity declared *inside* the YAML, never
+// by the name of the file it was read from: it rebuilds both paths as
+// `{id}-{slug}.{sql,yaml}`. A file whose name disagrees with its contents is
+// therefore unreachable — it would silently deploy some other file, or fail
+// later with a bare "SQL file not found" naming a path the user never typed.
+pub(crate) fn ensure_filename_matches_identity(
+    path: &Path,
+    expected_stem: &str,
+    name_field: &str,
+) -> Result<()> {
+    let actual_stem = path
+        .file_stem()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or_default();
+
+    if actual_stem == expected_stem {
+        return Ok(());
+    }
+
+    let expected = path.with_file_name(format!("{expected_stem}.yaml"));
+    bail!(
+        "{} is named after neither its id nor its `{name_field}:`, so deploy would read \
+         {} instead — rename this file and its .sql to {expected_stem}.*, or change \
+         `{name_field}:` to match the current filename",
+        path.display(),
+        expected.display(),
     );
 }

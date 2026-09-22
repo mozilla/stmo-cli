@@ -168,18 +168,6 @@ async fn find_changed_queries(
     changed_ids
 }
 
-// `id: 0` means "not created on Redash yet", so it is not an identity — several
-// new queries legitimately carry it at once. What must stay unique for them is
-// the file base `deploy_one` derives, since two new queries sharing it would
-// read from and write over the same pair of files.
-fn conflict_target(id: u64, name: &str) -> String {
-    if id == 0 {
-        format!("new query 0-{}", slugify(name))
-    } else {
-        format!("id {id}")
-    }
-}
-
 fn get_all_query_metadata_from_path(queries_dir: &Path) -> Result<Vec<(u64, String)>> {
     if !queries_dir.exists() {
         bail!("queries directory not found. Run 'stmo-cli fetch' first.");
@@ -199,10 +187,21 @@ fn get_all_query_metadata_from_path(queries_dir: &Path) -> Result<Vec<(u64, Stri
             let metadata: crate::models::QueryMetadata = serde_yaml::from_str(&metadata_content)
                 .context(format!("Failed to parse {}", path.display()))?;
 
-            paths_by_target
-                .entry(conflict_target(metadata.id, &metadata.name))
-                .or_default()
-                .push(path.display().to_string());
+            crate::commands::ensure_filename_matches_identity(
+                &path,
+                &format!("{}-{}", metadata.id, slugify(&metadata.name)),
+                "name",
+            )?;
+
+            // A tracked id can legitimately be claimed by two differently
+            // named files; `id: 0` cannot, because the filename check above
+            // already pins each new resource to a unique file base.
+            if metadata.id != 0 {
+                paths_by_target
+                    .entry(format!("id {}", metadata.id))
+                    .or_default()
+                    .push(path.display().to_string());
+            }
             queries.push((metadata.id, metadata.name));
         }
     }
@@ -779,28 +778,37 @@ mod tests {
     }
 
     #[test]
-    fn test_get_all_query_metadata_from_path_rejects_new_queries_sharing_a_file_base() {
+    fn test_get_all_query_metadata_from_path_rejects_filename_not_matching_name() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let dir = temp_dir.path();
 
         fs::write(
-            dir.join("0-same-name.yaml"),
-            format!("id: 0\nname: same-name\n{MINIMAL_QUERY_METADATA_YAML}"),
-        )
-        .unwrap();
-        fs::write(
-            dir.join("copy.yaml"),
-            format!("id: 0\nname: Same Name\n{MINIMAL_QUERY_METADATA_YAML}"),
+            dir.join("duplicate.yaml"),
+            format!("id: 0\nname: My Query\n{MINIMAL_QUERY_METADATA_YAML}"),
         )
         .unwrap();
 
         let result = get_all_query_metadata_from_path(dir);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Multiple local files resolve to the same target"));
-        assert!(err_msg.contains("new query 0-same-name"));
-        assert!(err_msg.contains("0-same-name.yaml"));
-        assert!(err_msg.contains("copy.yaml"));
+        assert!(err_msg.contains("duplicate.yaml"));
+        assert!(err_msg.contains("0-my-query.yaml"));
+        assert!(err_msg.contains("rename this file and its .sql to 0-my-query.*"));
+    }
+
+    #[test]
+    fn test_get_all_query_metadata_from_path_accepts_renamed_query_with_matching_filename() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let dir = temp_dir.path();
+
+        fs::write(
+            dir.join("120506-my-query.yaml"),
+            format!("id: 120506\nname: My Query\n{MINIMAL_QUERY_METADATA_YAML}"),
+        )
+        .unwrap();
+
+        let metadata = get_all_query_metadata_from_path(dir).unwrap();
+        assert_eq!(metadata, vec![(120_506, "My Query".to_string())]);
     }
 
     #[test]

@@ -3,7 +3,8 @@
 ## [Unreleased]
 
 ### Fixes
-- `deploy` / `snippets deploy`: several new queries/snippets can now be created in one run — the duplicate-id check no longer treats the `id: 0` placeholder as a real id, so two pending files stopped looking like two copies of the same query. Two new files that would resolve to the same filename are still rejected.
+- `deploy` / `snippets deploy`: several new queries/snippets can now be created in one run — the duplicate-id check no longer treats the `id: 0` placeholder as a real id, so two pending files stopped looking like two copies of the same query.
+- `deploy` / `snippets deploy`: a `.yaml` whose filename disagrees with the `id:` and `name:`/`trigger:` it declares is now reported by name, with the rename needed to fix it. Deploy addresses a resource by the identity inside the file, so such a file was previously unreachable and failed with a bare `Query SQL file not found` naming a path the user never typed.
 
 ## [0.11.0] - 2026-09-07
 
