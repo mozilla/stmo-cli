@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.11.2] - 2026-09-24
+
+### Fixes
+- `deploy`: the local `.yaml` is now written back after visualizations are deployed, so newly created visualizations keep their server-assigned ids and edited visualization options are reflected locally. Previously the yaml was written before visualizations were deployed, leaving new ones without an id.
+
 ## [0.11.1] - 2026-09-22
 
 ### Fixes
