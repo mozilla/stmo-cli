@@ -244,6 +244,134 @@ async fn test_deploy_new_viz_does_not_overwrite_existing() {
     mock_server.verify().await;
 }
 
+const LOCAL_VIZ_OPTIONS_YAML: &str =
+    "series:\n        stacking: normal\n      legend:\n        enabled: true\n";
+
+fn assert_local_viz_options(viz: &stmo_cli::models::VisualizationMetadata, yaml: &str) {
+    let expected =
+        serde_json::json!({"series": {"stacking": "normal"}, "legend": {"enabled": true}});
+    assert_eq!(
+        viz.options, expected,
+        "visualization {} did not have LOCAL options in:\n{yaml}",
+        viz.name
+    );
+}
+
+#[tokio::test]
+async fn test_deploy_writes_back_newly_created_viz() {
+    let _guard = get_test_lock().lock().await;
+    let _temp_dir = TempWorkDir::new();
+    let mock_server = wiremock::MockServer::start().await;
+
+    let initial_vizs = serde_json::json!([
+        {"id": 200, "name": "Chart", "type": "CHART", "options": {}, "description": null}
+    ]);
+    mount_stateful_query(&mock_server, 42, "Test Query", initial_vizs).await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+
+    std::fs::create_dir_all("queries").unwrap();
+    std::fs::write("queries/42-test-query.sql", "SELECT 1").unwrap();
+    std::fs::write(
+        "queries/42-test-query.yaml",
+        format!(
+            "id: 42\nname: Test Query\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - id: 200\n    name: Chart\n    type: CHART\n    options: {{}}\n    description: null\n  - name: New Chart\n    type: CHART\n    options:\n      {LOCAL_VIZ_OPTIONS_YAML}    description: null\ntags: null\n"
+        ),
+    )
+    .unwrap();
+
+    let result = stmo_cli::commands::deploy::deploy(&client, vec![42], false).await;
+    assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
+
+    let yaml = std::fs::read_to_string("queries/42-test-query.yaml").unwrap();
+    let metadata: stmo_cli::models::QueryMetadata = serde_yaml::from_str(&yaml).unwrap();
+
+    let created = metadata
+        .visualizations
+        .iter()
+        .find(|v| v.id == Some(300))
+        .unwrap_or_else(|| panic!("expected visualization 300 in:\n{yaml}"));
+    assert_local_viz_options(created, &yaml);
+}
+
+#[tokio::test]
+async fn test_deploy_writes_back_local_options_for_matched_viz() {
+    let _guard = get_test_lock().lock().await;
+    let _temp_dir = TempWorkDir::new();
+    let mock_server = wiremock::MockServer::start().await;
+
+    let initial_vizs = serde_json::json!([
+        {"id": 200, "name": "Chart", "type": "CHART", "options": {"legend": {"enabled": false}}, "description": null}
+    ]);
+    mount_stateful_query(&mock_server, 42, "Test Query", initial_vizs).await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+
+    std::fs::create_dir_all("queries").unwrap();
+    std::fs::write("queries/42-test-query.sql", "SELECT 1").unwrap();
+    std::fs::write(
+        "queries/42-test-query.yaml",
+        format!(
+            "id: 42\nname: Test Query\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - name: Chart\n    type: CHART\n    options:\n      {LOCAL_VIZ_OPTIONS_YAML}    description: null\ntags: null\n"
+        ),
+    )
+    .unwrap();
+
+    let result = stmo_cli::commands::deploy::deploy(&client, vec![42], false).await;
+    assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
+
+    let yaml = std::fs::read_to_string("queries/42-test-query.yaml").unwrap();
+    let metadata: stmo_cli::models::QueryMetadata = serde_yaml::from_str(&yaml).unwrap();
+
+    let matched = metadata
+        .visualizations
+        .iter()
+        .find(|v| v.id == Some(200))
+        .unwrap_or_else(|| panic!("expected visualization 200 in:\n{yaml}"));
+    assert_local_viz_options(matched, &yaml);
+}
+
+#[tokio::test]
+async fn test_deploy_new_query_writes_back_created_viz() {
+    let _guard = get_test_lock().lock().await;
+    let _temp_dir = TempWorkDir::new();
+    let mock_server = wiremock::MockServer::start().await;
+
+    let initial_vizs = serde_json::json!([
+        {"id": 99999, "name": "Table", "type": "TABLE", "options": {}, "description": null}
+    ]);
+    mount_stateful_query(&mock_server, 42, "New Query", initial_vizs).await;
+
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+
+    std::fs::create_dir_all("queries").unwrap();
+    std::fs::write("queries/0-new-query.sql", "SELECT 1").unwrap();
+    std::fs::write(
+        "queries/0-new-query.yaml",
+        format!(
+            "id: 0\nname: New Query\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - id: 0\n    name: Table\n    type: TABLE\n    options: {{}}\n    description: null\n  - name: New Chart\n    type: CHART\n    options:\n      {LOCAL_VIZ_OPTIONS_YAML}    description: null\ntags: null\n"
+        ),
+    )
+    .unwrap();
+
+    let result = stmo_cli::commands::deploy::deploy(&client, vec![0], false).await;
+    assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
+
+    let yaml = std::fs::read_to_string("queries/42-new-query.yaml").unwrap();
+    let metadata: stmo_cli::models::QueryMetadata = serde_yaml::from_str(&yaml).unwrap();
+
+    assert!(
+        metadata.visualizations.iter().any(|v| v.id == Some(99999)),
+        "expected visualization 99999 in:\n{yaml}"
+    );
+    let created = metadata
+        .visualizations
+        .iter()
+        .find(|v| v.id == Some(300))
+        .unwrap_or_else(|| panic!("expected visualization 300 in:\n{yaml}"));
+    assert_local_viz_options(created, &yaml);
+}
+
 #[tokio::test]
 async fn test_deploy_bare_second_run_deploys_nothing() {
     let _guard = get_test_lock().lock().await;

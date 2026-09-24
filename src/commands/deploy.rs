@@ -217,6 +217,31 @@ fn get_all_query_metadata() -> Result<Vec<(u64, String)>> {
     get_all_query_metadata_from_path(Path::new("queries"))
 }
 
+fn write_query_yaml(path: &str, query: &Query) -> Result<()> {
+    let mut visualizations: Vec<VisualizationMetadata> = query
+        .visualizations
+        .iter()
+        .map(VisualizationMetadata::from)
+        .collect();
+    visualizations.sort_by_key(|v| v.id);
+
+    let metadata = QueryMetadata {
+        id: query.id,
+        name: query.name.clone(),
+        description: query.description.clone(),
+        data_source_id: query.data_source_id,
+        user_id: query.user.as_ref().map(|u| u.id),
+        schedule: query.schedule.clone(),
+        options: query.options.clone(),
+        visualizations,
+        tags: query.tags.clone(),
+    };
+
+    let yaml_content =
+        serde_yaml::to_string(&metadata).context("Failed to serialize query metadata")?;
+    fs::write(path, yaml_content).context(format!("Failed to write {path}"))
+}
+
 async fn deploy_visualizations(
     client: &RedashClient,
     query_id: u64,
@@ -298,7 +323,7 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
 
     validate_enum_options(&metadata, &yaml_path)?;
 
-    let result_query = if id == 0 {
+    let (result_query, final_yaml_path) = if id == 0 {
         let create_query = crate::models::CreateQuery {
             name: metadata.name.clone(),
             description: metadata.description.clone(),
@@ -314,34 +339,15 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
         let fetched = client.get_query(created.id).await?;
         let new_slug = slugify(&fetched.name);
         let new_base = format!("queries/{}-{new_slug}", fetched.id);
+        let new_yaml_path = format!("{new_base}.yaml");
         fs::write(format!("{new_base}.sql"), &fetched.sql)
             .context(format!("Failed to write {new_base}.sql"))?;
-        let mut new_visualizations: Vec<crate::models::VisualizationMetadata> = fetched
-            .visualizations
-            .iter()
-            .map(crate::models::VisualizationMetadata::from)
-            .collect();
-        new_visualizations.sort_by_key(|v| v.id);
-        let new_metadata = crate::models::QueryMetadata {
-            id: fetched.id,
-            name: fetched.name.clone(),
-            description: fetched.description.clone(),
-            data_source_id: fetched.data_source_id,
-            user_id: fetched.user.as_ref().map(|u| u.id),
-            schedule: fetched.schedule.clone(),
-            options: fetched.options.clone(),
-            visualizations: new_visualizations,
-            tags: fetched.tags.clone(),
-        };
-        let yaml_content =
-            serde_yaml::to_string(&new_metadata).context("Failed to serialize query metadata")?;
-        fs::write(format!("{new_base}.yaml"), yaml_content)
-            .context(format!("Failed to write {new_base}.yaml"))?;
+        write_query_yaml(&new_yaml_path, &fetched)?;
         fs::remove_file(&sql_path).context(format!("Failed to delete {sql_path}"))?;
         fs::remove_file(&yaml_path).context(format!("Failed to delete {yaml_path}"))?;
         println!("  ✓ Created new query: {} - {name}", fetched.id);
         println!("    Renamed: 0-{slug}.* → {}-{new_slug}.*", fetched.id);
-        fetched
+        (fetched, new_yaml_path)
     } else {
         let query = Query {
             id: metadata.id,
@@ -360,29 +366,8 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
             created_at: String::new(),
         };
         let result = client.create_or_update_query(&query).await?;
-        let fetched = client.get_query(id).await?;
-        let mut updated_visualizations: Vec<crate::models::VisualizationMetadata> = fetched
-            .visualizations
-            .iter()
-            .map(crate::models::VisualizationMetadata::from)
-            .collect();
-        updated_visualizations.sort_by_key(|v| v.id);
-        let updated_metadata = crate::models::QueryMetadata {
-            id: fetched.id,
-            name: fetched.name.clone(),
-            description: fetched.description.clone(),
-            data_source_id: fetched.data_source_id,
-            user_id: fetched.user.as_ref().map(|u| u.id),
-            schedule: fetched.schedule.clone(),
-            options: fetched.options.clone(),
-            visualizations: updated_visualizations,
-            tags: fetched.tags.clone(),
-        };
-        let yaml_content = serde_yaml::to_string(&updated_metadata)
-            .context("Failed to serialize query metadata")?;
-        fs::write(&yaml_path, yaml_content).context(format!("Failed to write {yaml_path}"))?;
         println!("  ✓ {id} - {name}");
-        result
+        (result, yaml_path.clone())
     };
 
     deploy_visualizations(
@@ -393,7 +378,10 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
     )
     .await?;
 
-    Ok(result_query)
+    let final_query = client.get_query(result_query.id).await?;
+    write_query_yaml(&final_yaml_path, &final_query)?;
+
+    Ok(final_query)
 }
 
 pub async fn deploy(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Result<()> {

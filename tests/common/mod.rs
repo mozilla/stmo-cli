@@ -4,9 +4,11 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
-use wiremock::matchers::{body_partial_json, method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::matchers::{body_partial_json, method, path, path_regex};
+use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
 pub struct TestContext {
     pub mock_server: MockServer,
@@ -831,4 +833,137 @@ pub fn mock_create_query_snippet_with_trigger(id: u64, trigger: &str, snippet_bo
             "updated_at": "2026-01-21T10:00:00Z",
             "created_at": "2026-01-21T10:00:00Z"
         })))
+}
+
+struct QueryStateResponder {
+    query_id: u64,
+    name: String,
+    vizs: Arc<Mutex<Vec<serde_json::Value>>>,
+}
+
+impl Respond for QueryStateResponder {
+    fn respond(&self, _request: &Request) -> ResponseTemplate {
+        let vizs = self.vizs.lock().unwrap().clone();
+        ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": self.query_id,
+            "name": self.name,
+            "description": null,
+            "query": "SELECT 1",
+            "data_source_id": 63,
+            "user": null,
+            "schedule": null,
+            "options": {"parameters": []},
+            "visualizations": vizs,
+            "tags": null,
+            "is_archived": false,
+            "is_draft": false,
+            "updated_at": "2026-01-21T10:00:00",
+            "created_at": "2026-01-21T10:00:00"
+        }))
+    }
+}
+
+struct CreateVisualizationResponder {
+    vizs: Arc<Mutex<Vec<serde_json::Value>>>,
+    next_id: Arc<AtomicU64>,
+}
+
+impl Respond for CreateVisualizationResponder {
+    fn respond(&self, request: &Request) -> ResponseTemplate {
+        let mut body: serde_json::Value = request.body_json().unwrap();
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        body["id"] = serde_json::json!(id);
+        self.vizs.lock().unwrap().push(body.clone());
+        ResponseTemplate::new(200).set_body_json(body)
+    }
+}
+
+struct UpdateVisualizationResponder {
+    vizs: Arc<Mutex<Vec<serde_json::Value>>>,
+}
+
+impl Respond for UpdateVisualizationResponder {
+    fn respond(&self, request: &Request) -> ResponseTemplate {
+        let body: serde_json::Value = request.body_json().unwrap();
+        let id: u64 = request
+            .url
+            .path()
+            .rsplit('/')
+            .next()
+            .and_then(|s| s.parse().ok())
+            .unwrap();
+
+        let mut vizs = self.vizs.lock().unwrap();
+        if let Some(entry) = vizs.iter_mut().find(|v| v["id"].as_u64() == Some(id)) {
+            entry["name"] = body["name"].clone();
+            entry["type"] = body["type"].clone();
+            entry["options"] = body["options"].clone();
+            entry["description"] = body["description"].clone();
+        }
+        drop(vizs);
+
+        let mut response_body = body;
+        response_body["id"] = serde_json::json!(id);
+        ResponseTemplate::new(200).set_body_json(response_body)
+    }
+}
+
+// A stateful stand-in for Redash: the query GET (and the POSTs that "create"
+// or "update" the query) always reflect the current visualization list, and
+// visualization POSTs mutate that same list. Needed to reproduce writeback
+// bugs, where a static mock can't tell a pre-deploy GET from a post-deploy
+// one. New visualizations are assigned ids starting at 300.
+pub async fn mount_stateful_query(
+    server: &MockServer,
+    query_id: u64,
+    name: &str,
+    initial_vizs: serde_json::Value,
+) -> Arc<Mutex<Vec<serde_json::Value>>> {
+    let vizs = Arc::new(Mutex::new(
+        initial_vizs.as_array().cloned().unwrap_or_default(),
+    ));
+    let next_id = Arc::new(AtomicU64::new(300));
+
+    let query_responder = || QueryStateResponder {
+        query_id,
+        name: name.to_string(),
+        vizs: Arc::clone(&vizs),
+    };
+
+    Mock::given(method("GET"))
+        .and(path(format!("/api/queries/{query_id}")))
+        .respond_with(query_responder())
+        .mount(server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path(format!("/api/queries/{query_id}")))
+        .respond_with(query_responder())
+        .mount(server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/queries"))
+        .respond_with(query_responder())
+        .mount(server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/visualizations"))
+        .respond_with(CreateVisualizationResponder {
+            vizs: Arc::clone(&vizs),
+            next_id: Arc::clone(&next_id),
+        })
+        .mount(server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/api/visualizations/\d+$"))
+        .respond_with(UpdateVisualizationResponder {
+            vizs: Arc::clone(&vizs),
+        })
+        .mount(server)
+        .await;
+
+    vizs
 }
