@@ -562,7 +562,7 @@ mod tests {
         let result = extract_dashboard_slugs_from_path(temp_dir.path());
         assert!(result.is_ok());
         let slugs = result.unwrap();
-        assert!(slugs.is_empty());
+        assert_eq!(slugs, [] as [String; 0]);
     }
 
     #[test]

@@ -446,7 +446,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let result = extract_snippet_ids_from_path(temp_dir.path());
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        assert_eq!(result.unwrap(), [] as [u64; 0]);
     }
 
     #[test]
@@ -455,7 +455,7 @@ mod tests {
         let missing = temp_dir.path().join("does-not-exist");
         let result = extract_snippet_ids_from_path(&missing);
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        assert_eq!(result.unwrap(), [] as [u64; 0]);
     }
 
     #[test]
@@ -675,7 +675,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         let metadata = get_all_snippet_metadata_from_path(temp_dir.path()).unwrap();
-        assert!(metadata.is_empty());
+        assert_eq!(metadata, [] as [(u64, String); 0]);
     }
 
     #[test]
