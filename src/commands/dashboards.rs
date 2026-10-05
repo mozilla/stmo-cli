@@ -37,6 +37,13 @@ fn dashboard_metadata(dashboard: &Dashboard) -> DashboardMetadata {
     }
 }
 
+fn write_dashboard_metadata(path: &Path, metadata: &DashboardMetadata) -> Result<()> {
+    let yaml_content =
+        serde_yaml::to_string(metadata).context("Failed to serialize dashboard metadata")?;
+    fs::write(path, yaml_content).context(format!("Failed to write {}", path.display()))?;
+    Ok(())
+}
+
 fn extract_dashboard_slugs_from_path(dashboards_dir: &Path) -> Result<Vec<String>> {
     if !dashboards_dir.exists() {
         return Ok(Vec::new());
@@ -237,10 +244,7 @@ fn save_dashboard_yaml(
 ) -> Result<()> {
     let filename = format!("dashboards/{}-{}.yaml", dashboard.id, dashboard.slug);
     let metadata = dashboard_metadata(dashboard);
-
-    let yaml_content =
-        serde_yaml::to_string(&metadata).context("Failed to serialize dashboard metadata")?;
-    fs::write(&filename, &yaml_content).context(format!("Failed to write {filename}"))?;
+    write_dashboard_metadata(Path::new(&filename), &metadata)?;
 
     if let Some(old_path) = old_yaml_path
         && old_path != std::path::Path::new(&filename)
@@ -557,6 +561,20 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    fn test_dashboard_metadata(id: u64, slug: &str) -> DashboardMetadata {
+        DashboardMetadata {
+            id,
+            name: "Test Dashboard".to_string(),
+            slug: slug.to_string(),
+            user_id: 530,
+            is_draft: false,
+            is_archived: false,
+            filters_enabled: false,
+            tags: vec!["test".to_string()],
+            widgets: vec![],
+        }
+    }
+
     #[test]
     fn dashboard_metadata_copies_server_widget_metadata() {
         let dashboard = serde_json::from_value::<Dashboard>(serde_json::json!({
@@ -595,6 +613,21 @@ mod tests {
             Some("Chart")
         );
         assert_eq!(metadata.widgets[0].options.position.col, 1);
+    }
+
+    #[test]
+    fn write_dashboard_metadata_creates_readable_yaml() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("dashboard.yaml");
+        let metadata = test_dashboard_metadata(42, "test-dashboard");
+
+        write_dashboard_metadata(&path, &metadata).unwrap();
+
+        let saved: DashboardMetadata =
+            serde_yaml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(saved.id, 42);
+        assert_eq!(saved.slug, "test-dashboard");
+        assert_eq!(saved.tags, ["test"]);
     }
 
     #[test]
