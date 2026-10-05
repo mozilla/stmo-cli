@@ -187,6 +187,10 @@ pub async fn deploy(client: &RedashClient, dashboard_slugs: Vec<String>, all: bo
     let (success_count, failed_slugs) =
         deploy_dashboards(client, &slugs_to_deploy, Path::new("dashboards")).await;
 
+    report_deployment_results(success_count, &failed_slugs)
+}
+
+fn report_deployment_results(success_count: usize, failed_slugs: &[String]) -> Result<()> {
     if failed_slugs.is_empty() {
         println!("\n✓ All dashboards deployed successfully");
         Ok(())
@@ -781,6 +785,16 @@ mod tests {
 
         assert_eq!(success_count, 0);
         assert_eq!(failed_slugs, ["first", "second"]);
+    }
+
+    #[test]
+    fn report_deployment_results_returns_success_or_failure() {
+        assert!(report_deployment_results(2, &[]).is_ok());
+        let error = report_deployment_results(1, &["failed-dashboard".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("1 dashboard(s) failed to deploy"));
+        assert!(error.contains("failed-dashboard"));
     }
 
     #[test]
