@@ -72,10 +72,6 @@ fn extract_dashboard_slugs_from_path(dashboards_dir: &Path) -> Result<Vec<String
     Ok(dashboard_slugs)
 }
 
-fn extract_dashboard_slugs_from_directory() -> Result<Vec<String>> {
-    extract_dashboard_slugs_from_path(Path::new("dashboards"))
-}
-
 fn dashboard_yaml_paths_for_slug(
     dashboards_dir: &Path,
     dashboard_slug: &str,
@@ -186,28 +182,7 @@ pub async fn fetch(client: &RedashClient, dashboard_slugs: Vec<String>) -> Resul
 }
 
 pub async fn deploy(client: &RedashClient, dashboard_slugs: Vec<String>, all: bool) -> Result<()> {
-    let existing_dashboard_slugs = extract_dashboard_slugs_from_directory()?;
-
-    let slugs_to_deploy = if all {
-        if existing_dashboard_slugs.is_empty() {
-            anyhow::bail!("No dashboards found in dashboards/ directory. Use 'fetch' first.");
-        }
-        println!(
-            "Deploying {} dashboards from local directory...\n",
-            existing_dashboard_slugs.len()
-        );
-        existing_dashboard_slugs
-    } else if !dashboard_slugs.is_empty() {
-        println!(
-            "Deploying {} specific dashboards...\n",
-            dashboard_slugs.len()
-        );
-        dashboard_slugs
-    } else {
-        anyhow::bail!(
-            "No dashboard slugs specified. Use --all to deploy all tracked dashboards, or provide specific slugs.\n\nExamples:\n  stmo-cli dashboards deploy --all\n  stmo-cli dashboards deploy firefox-desktop-on-steamos bug-2006698---ccov-build-regression"
-        );
-    };
+    let slugs_to_deploy = dashboard_slugs_to_deploy(dashboard_slugs, all, Path::new("dashboards"))?;
 
     let mut success_count = 0;
     let mut failed_slugs = Vec::new();
@@ -234,6 +209,34 @@ pub async fn deploy(client: &RedashClient, dashboard_slugs: Vec<String>, all: bo
             "{} dashboard(s) failed to deploy: {}",
             failed_slugs.len(),
             failed_slugs.join(", ")
+        );
+    }
+}
+
+fn dashboard_slugs_to_deploy(
+    dashboard_slugs: Vec<String>,
+    all: bool,
+    dashboards_dir: &Path,
+) -> Result<Vec<String>> {
+    if all {
+        let existing_dashboard_slugs = extract_dashboard_slugs_from_path(dashboards_dir)?;
+        if existing_dashboard_slugs.is_empty() {
+            anyhow::bail!("No dashboards found in dashboards/ directory. Use 'fetch' first.");
+        }
+        println!(
+            "Deploying {} dashboards from local directory...\n",
+            existing_dashboard_slugs.len()
+        );
+        Ok(existing_dashboard_slugs)
+    } else if !dashboard_slugs.is_empty() {
+        println!(
+            "Deploying {} specific dashboards...\n",
+            dashboard_slugs.len()
+        );
+        Ok(dashboard_slugs)
+    } else {
+        anyhow::bail!(
+            "No dashboard slugs specified. Use --all to deploy all tracked dashboards, or provide specific slugs.\n\nExamples:\n  stmo-cli dashboards deploy --all\n  stmo-cli dashboards deploy firefox-desktop-on-steamos bug-2006698---ccov-build-regression"
         );
     }
 }
@@ -716,6 +719,39 @@ mod tests {
         )
         .unwrap();
         assert_eq!(saved.name, "Test Dashboard");
+    }
+
+    #[test]
+    fn dashboard_slugs_to_deploy_selects_explicit_or_tracked_slugs() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir
+                .path()
+                .join(format!("{SECOND_SAMPLE_DASHBOARD_ID}-zebra.yaml")),
+            "test",
+        )
+        .unwrap();
+        fs::write(
+            temp_dir
+                .path()
+                .join(format!("{SAMPLE_DASHBOARD_ID}-alpha.yaml")),
+            "test",
+        )
+        .unwrap();
+
+        assert_eq!(
+            dashboard_slugs_to_deploy(vec!["chosen-dashboard".to_string()], false, temp_dir.path())
+                .unwrap(),
+            ["chosen-dashboard"]
+        );
+        assert_eq!(
+            dashboard_slugs_to_deploy(vec![], true, temp_dir.path()).unwrap(),
+            ["alpha", "zebra"]
+        );
+        assert!(dashboard_slugs_to_deploy(vec![], false, temp_dir.path()).is_err());
+
+        let empty_dir = TempDir::new().unwrap();
+        assert!(dashboard_slugs_to_deploy(vec![], true, empty_dir.path()).is_err());
     }
 
     #[test]
