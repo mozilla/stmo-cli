@@ -76,6 +76,26 @@ fn extract_dashboard_slugs_from_directory() -> Result<Vec<String>> {
     extract_dashboard_slugs_from_path(Path::new("dashboards"))
 }
 
+fn dashboard_yaml_paths_for_slug(
+    dashboards_dir: &Path,
+    dashboard_slug: &str,
+) -> Result<Vec<PathBuf>> {
+    Ok(fs::read_dir(dashboards_dir)
+        .context("Failed to read dashboards directory")?
+        .filter_map(std::result::Result::ok)
+        .filter(|entry| {
+            entry.path().extension().is_some_and(|ext| ext == "yaml")
+                && entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|name| name.strip_suffix(".yaml"))
+                    .and_then(|name| name.split_once('-'))
+                    .is_some_and(|(_, slug)| slug == dashboard_slug)
+        })
+        .map(|entry| entry.path())
+        .collect())
+}
+
 pub async fn discover(client: &RedashClient) -> Result<()> {
     println!("Fetching your favorite dashboards from Redash...\n");
     let dashboards = client.fetch_favorite_dashboards().await?;
@@ -213,7 +233,7 @@ pub async fn deploy(client: &RedashClient, dashboard_slugs: Vec<String>, all: bo
     let mut failed_slugs = Vec::new();
 
     for slug in &slugs_to_deploy {
-        match deploy_single_dashboard(client, slug).await {
+        match deploy_single_dashboard(client, slug, Path::new("dashboards")).await {
             Ok(name) => {
                 println!("  ✓ {name}");
                 success_count += 1;
@@ -311,21 +331,8 @@ async fn auto_populate_parameter_mappings(
         .map(|q| build_dashboard_level_parameter_mappings(&q.options.parameters)))
 }
 
-fn find_dashboard_yaml(dashboard_slug: &str) -> Result<PathBuf> {
-    let yaml_files: Vec<_> = fs::read_dir("dashboards")
-        .context("Failed to read dashboards directory")?
-        .filter_map(std::result::Result::ok)
-        .filter(|entry| {
-            entry.path().extension().is_some_and(|ext| ext == "yaml")
-                && entry
-                    .file_name()
-                    .to_str()
-                    .and_then(|name| name.strip_suffix(".yaml"))
-                    .and_then(|name| name.split_once('-'))
-                    .map(|(_, slug)| slug)
-                    .is_some_and(|slug| slug == dashboard_slug)
-        })
-        .collect();
+fn find_dashboard_yaml(dashboard_slug: &str, dashboards_dir: &Path) -> Result<PathBuf> {
+    let yaml_files = dashboard_yaml_paths_for_slug(dashboards_dir, dashboard_slug)?;
 
     if yaml_files.is_empty() {
         anyhow::bail!("No YAML file found for dashboard '{dashboard_slug}'");
@@ -333,7 +340,7 @@ fn find_dashboard_yaml(dashboard_slug: &str) -> Result<PathBuf> {
     if yaml_files.len() > 1 {
         anyhow::bail!("Multiple YAML files found for dashboard '{dashboard_slug}'");
     }
-    Ok(yaml_files[0].path())
+    Ok(yaml_files[0].clone())
 }
 
 async fn resolve_widget_options(
@@ -359,8 +366,12 @@ async fn resolve_widget_options(
     Ok((options, has_params))
 }
 
-async fn deploy_single_dashboard(client: &RedashClient, dashboard_slug: &str) -> Result<String> {
-    let yaml_path = find_dashboard_yaml(dashboard_slug)?;
+async fn deploy_single_dashboard(
+    client: &RedashClient,
+    dashboard_slug: &str,
+    dashboards_dir: &Path,
+) -> Result<String> {
+    let yaml_path = find_dashboard_yaml(dashboard_slug, dashboards_dir)?;
     let yaml_content = fs::read_to_string(&yaml_path)
         .context(format!("Failed to read {}", yaml_path.display()))?;
 
@@ -561,12 +572,18 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    const SAMPLE_DASHBOARD_ID: u64 = 9_000_000_001;
+    const SECOND_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_002;
+    const THIRD_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_003;
+    const FOURTH_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_004;
+    const SAMPLE_USER_ID: u64 = 9_600_000_001;
+
     fn test_dashboard_metadata(id: u64, slug: &str) -> DashboardMetadata {
         DashboardMetadata {
             id,
             name: "Test Dashboard".to_string(),
             slug: slug.to_string(),
-            user_id: 530,
+            user_id: SAMPLE_USER_ID,
             is_draft: false,
             is_archived: false,
             filters_enabled: false,
@@ -578,17 +595,17 @@ mod tests {
     #[test]
     fn dashboard_metadata_copies_server_widget_metadata() {
         let dashboard = serde_json::from_value::<Dashboard>(serde_json::json!({
-            "id": 42,
+            "id": SAMPLE_DASHBOARD_ID,
             "name": "Test Dashboard",
             "slug": "test-dashboard",
-            "user_id": 530,
+            "user_id": SAMPLE_USER_ID,
             "is_archived": false,
             "is_draft": false,
             "dashboard_filters_enabled": false,
             "tags": ["test"],
             "widgets": [{
                 "id": 7,
-                "dashboard_id": 42,
+                "dashboard_id": SAMPLE_DASHBOARD_ID,
                 "width": 2,
                 "visualization_id": 8,
                 "visualization": {
@@ -605,7 +622,7 @@ mod tests {
         .unwrap();
 
         let metadata = dashboard_metadata(&dashboard);
-        assert_eq!(metadata.id, 42);
+        assert_eq!(metadata.id, SAMPLE_DASHBOARD_ID);
         assert_eq!(metadata.widgets.len(), 1);
         assert_eq!(metadata.widgets[0].query_id, Some(9));
         assert_eq!(
@@ -619,15 +636,48 @@ mod tests {
     fn write_dashboard_metadata_creates_readable_yaml() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("dashboard.yaml");
-        let metadata = test_dashboard_metadata(42, "test-dashboard");
+        let metadata = test_dashboard_metadata(SAMPLE_DASHBOARD_ID, "test-dashboard");
 
         write_dashboard_metadata(&path, &metadata).unwrap();
 
         let saved: DashboardMetadata =
             serde_yaml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
-        assert_eq!(saved.id, 42);
+        assert_eq!(saved.id, SAMPLE_DASHBOARD_ID);
         assert_eq!(saved.slug, "test-dashboard");
         assert_eq!(saved.tags, ["test"]);
+    }
+
+    #[test]
+    fn dashboard_yaml_paths_for_slug_filters_by_complete_slug() {
+        let temp_dir = TempDir::new().unwrap();
+        let slug = "sample-dashboard";
+        let files = [
+            format!("{SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
+            format!("{SECOND_SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
+            format!("{THIRD_SAMPLE_DASHBOARD_ID}-other-dashboard.yaml"),
+            format!("{FOURTH_SAMPLE_DASHBOARD_ID}-{slug}.txt"),
+        ];
+        for file in &files {
+            fs::write(temp_dir.path().join(file), "test").unwrap();
+        }
+
+        let paths = dashboard_yaml_paths_for_slug(temp_dir.path(), slug).unwrap();
+        let mut filenames: Vec<_> = paths
+            .iter()
+            .map(|path| path.file_name().unwrap().to_str().unwrap())
+            .collect();
+        filenames.sort_unstable();
+        let expected_filenames = [
+            format!("{SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
+            format!("{SECOND_SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
+        ];
+        assert_eq!(
+            filenames,
+            expected_filenames
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -645,12 +695,16 @@ mod tests {
         let temp_path = temp_dir.path();
 
         fs::write(
-            temp_path.join("2006698-bug-2006698---ccov-build-regression.yaml"),
+            temp_path.join(format!(
+                "{SAMPLE_DASHBOARD_ID}-sample-dashboard---build-regression.yaml"
+            )),
             "test",
         )
         .unwrap();
         fs::write(
-            temp_path.join("2570-firefox-desktop-on-steamos.yaml"),
+            temp_path.join(format!(
+                "{SECOND_SAMPLE_DASHBOARD_ID}-browser-dashboard.yaml"
+            )),
             "test",
         )
         .unwrap();
@@ -660,8 +714,8 @@ mod tests {
 
         let slugs = result.unwrap();
 
-        assert!(slugs.contains(&"bug-2006698---ccov-build-regression".to_string()));
-        assert!(slugs.contains(&"firefox-desktop-on-steamos".to_string()));
+        assert!(slugs.contains(&"sample-dashboard---build-regression".to_string()));
+        assert!(slugs.contains(&"browser-dashboard".to_string()));
     }
 
     #[test]
@@ -670,12 +724,16 @@ mod tests {
         let temp_path = temp_dir.path();
 
         fs::write(
-            temp_path.join("2006698-bug-2006698---ccov-build-regression.yaml"),
+            temp_path.join(format!(
+                "{SAMPLE_DASHBOARD_ID}-sample-dashboard---build-regression.yaml"
+            )),
             "test",
         )
         .unwrap();
         fs::write(
-            temp_path.join("2006699-bug-2006698---ccov-build-regression.yaml"),
+            temp_path.join(format!(
+                "{SECOND_SAMPLE_DASHBOARD_ID}-sample-dashboard---build-regression.yaml"
+            )),
             "test",
         )
         .unwrap();
@@ -686,7 +744,7 @@ mod tests {
         let slugs = result.unwrap();
 
         assert_eq!(slugs.len(), 1);
-        assert_eq!(slugs[0], "bug-2006698---ccov-build-regression");
+        assert_eq!(slugs[0], "sample-dashboard---build-regression");
     }
 
     #[test]
@@ -695,12 +753,16 @@ mod tests {
         let temp_path = temp_dir.path();
 
         fs::write(
-            temp_path.join("2006698-bug-2006698---ccov-build-regression.yaml"),
+            temp_path.join(format!(
+                "{SAMPLE_DASHBOARD_ID}-sample-dashboard---build-regression.yaml"
+            )),
             "test",
         )
         .unwrap();
         fs::write(
-            temp_path.join("2570-firefox-desktop-on-steamos.txt"),
+            temp_path.join(format!(
+                "{SECOND_SAMPLE_DASHBOARD_ID}-browser-dashboard.txt"
+            )),
             "test",
         )
         .unwrap();
@@ -712,7 +774,7 @@ mod tests {
         let slugs = result.unwrap();
 
         assert_eq!(slugs.len(), 1);
-        assert_eq!(slugs[0], "bug-2006698---ccov-build-regression");
+        assert_eq!(slugs[0], "sample-dashboard---build-regression");
     }
 
     #[test]
@@ -720,13 +782,23 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let temp_path = temp_dir.path();
 
-        fs::write(temp_path.join("3000-zebra-dashboard.yaml"), "test").unwrap();
         fs::write(
-            temp_path.join("2006698-bug-2006698---ccov-build-regression.yaml"),
+            temp_path.join(format!("{THIRD_SAMPLE_DASHBOARD_ID}-zebra-dashboard.yaml")),
             "test",
         )
         .unwrap();
-        fs::write(temp_path.join("1000-alpha-dashboard.yaml"), "test").unwrap();
+        fs::write(
+            temp_path.join(format!(
+                "{SAMPLE_DASHBOARD_ID}-sample-dashboard---build-regression.yaml"
+            )),
+            "test",
+        )
+        .unwrap();
+        fs::write(
+            temp_path.join(format!("{SECOND_SAMPLE_DASHBOARD_ID}-alpha-dashboard.yaml")),
+            "test",
+        )
+        .unwrap();
 
         let result = extract_dashboard_slugs_from_path(temp_path);
         assert!(result.is_ok());
@@ -735,7 +807,7 @@ mod tests {
 
         assert_eq!(slugs.len(), 3);
         assert_eq!(slugs[0], "alpha-dashboard");
-        assert_eq!(slugs[1], "bug-2006698---ccov-build-regression");
+        assert_eq!(slugs[1], "sample-dashboard---build-regression");
         assert_eq!(slugs[2], "zebra-dashboard");
     }
 }
