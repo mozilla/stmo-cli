@@ -126,6 +126,17 @@ pub async fn discover(client: &RedashClient) -> Result<()> {
     Ok(())
 }
 
+async fn fetch_dashboard_to_file(
+    client: &RedashClient,
+    slug: &str,
+    dashboards_dir: &Path,
+) -> Result<Dashboard> {
+    let dashboard = client.get_dashboard(slug).await?;
+    let path = dashboards_dir.join(format!("{}-{}.yaml", dashboard.id, dashboard.slug));
+    write_dashboard_metadata(&path, &dashboard_metadata(&dashboard))?;
+    Ok(dashboard)
+}
+
 pub async fn fetch(client: &RedashClient, dashboard_slugs: Vec<String>) -> Result<()> {
     if dashboard_slugs.is_empty() {
         anyhow::bail!(
@@ -141,39 +152,8 @@ pub async fn fetch(client: &RedashClient, dashboard_slugs: Vec<String>) -> Resul
     let mut failed_slugs = Vec::new();
 
     for slug in &dashboard_slugs {
-        match client.get_dashboard(slug).await {
+        match fetch_dashboard_to_file(client, slug, Path::new("dashboards")).await {
             Ok(dashboard) => {
-                let filename = format!("dashboards/{}-{}.yaml", dashboard.id, dashboard.slug);
-
-                let metadata = DashboardMetadata {
-                    id: dashboard.id,
-                    name: dashboard.name.clone(),
-                    slug: dashboard.slug.clone(),
-                    user_id: dashboard.user_id,
-                    is_draft: dashboard.is_draft,
-                    is_archived: dashboard.is_archived,
-                    filters_enabled: dashboard.filters_enabled,
-                    tags: dashboard.tags.clone(),
-                    widgets: dashboard
-                        .widgets
-                        .iter()
-                        .map(|w| WidgetMetadata {
-                            id: w.id,
-                            width: w.width,
-                            visualization_id: w.visualization_id,
-                            query_id: w.visualization.as_ref().map(|v| v.query.id),
-                            visualization_name: w.visualization.as_ref().map(|v| v.name.clone()),
-                            text: w.text.clone(),
-                            options: w.options.clone(),
-                        })
-                        .collect(),
-                };
-
-                let yaml_content = serde_yaml::to_string(&metadata)
-                    .context("Failed to serialize dashboard metadata")?;
-                fs::write(&filename, yaml_content)
-                    .context(format!("Failed to write {filename}"))?;
-
                 let status = if dashboard.is_archived {
                     " [ARCHIVED]"
                 } else {
@@ -571,6 +551,31 @@ pub async fn unarchive(client: &RedashClient, dashboard_slugs: Vec<String>) -> R
 mod tests {
     use super::*;
     use tempfile::TempDir;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn test_dashboard_json(
+        id: u64,
+        name: &str,
+        slug: &str,
+        widgets: &serde_json::Value,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "id": id,
+            "name": name,
+            "slug": slug,
+            "user_id": 530,
+            "is_archived": false,
+            "is_draft": false,
+            "dashboard_filters_enabled": false,
+            "tags": ["test"],
+            "widgets": widgets
+        })
+    }
+
+    fn test_client(mock_server: &MockServer) -> RedashClient {
+        RedashClient::new(mock_server.uri(), "test-key").unwrap()
+    }
 
     const SAMPLE_DASHBOARD_ID: u64 = 9_000_000_001;
     const SECOND_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_002;
@@ -678,6 +683,39 @@ mod tests {
                 .map(String::as_str)
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[tokio::test]
+    async fn fetch_dashboard_to_file_writes_the_downloaded_dashboard() {
+        let mock_server = MockServer::start().await;
+        let dashboards_dir = TempDir::new().unwrap();
+        Mock::given(method("GET"))
+            .and(path("/api/dashboards/test-dashboard"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(test_dashboard_json(
+                    42,
+                    "Test Dashboard",
+                    "test-dashboard",
+                    &serde_json::json!([]),
+                )),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let dashboard = fetch_dashboard_to_file(
+            &test_client(&mock_server),
+            "test-dashboard",
+            dashboards_dir.path(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(dashboard.id, 42);
+        let saved: DashboardMetadata = serde_yaml::from_str(
+            &fs::read_to_string(dashboards_dir.path().join("42-test-dashboard.yaml")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved.name, "Test Dashboard");
     }
 
     #[test]
