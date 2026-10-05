@@ -304,7 +304,7 @@ async fn test_refresh_adhoc_query_success() {
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let job = client
-        .refresh_adhoc_query("SELECT 1 AS one", 63, None)
+        .refresh_adhoc_query("SELECT 1 AS one", SAMPLE_DATA_SOURCE_ID, None)
         .await
         .unwrap();
 
@@ -348,7 +348,7 @@ async fn test_execute_adhoc_with_polling_success() {
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let result = client
-        .execute_adhoc_with_polling("SELECT 1 AS one", 63, None, 10, 100)
+        .execute_adhoc_with_polling("SELECT 1 AS one", SAMPLE_DATA_SOURCE_ID, None, 10, 100)
         .await
         .unwrap();
 
@@ -368,7 +368,7 @@ async fn test_execute_adhoc_with_polling_failure() {
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let result = client
-        .execute_adhoc_with_polling("SELECT bad syntax", 63, None, 10, 100)
+        .execute_adhoc_with_polling("SELECT bad syntax", SAMPLE_DATA_SOURCE_ID, None, 10, 100)
         .await;
 
     assert!(result.is_err());
@@ -412,11 +412,11 @@ async fn test_list_data_sources_success() {
     let data_sources = client.list_data_sources().await.unwrap();
 
     assert_eq!(data_sources.len(), 2);
-    assert_eq!(data_sources[0].id, 63);
-    assert_eq!(data_sources[0].name, "Telemetry (BigQuery)");
+    assert_eq!(data_sources[0].id, SAMPLE_DATA_SOURCE_ID);
+    assert_eq!(data_sources[0].name, "Example Data Source");
     assert_eq!(data_sources[0].ds_type, "bigquery");
-    assert_eq!(data_sources[1].id, 10);
-    assert_eq!(data_sources[1].name, "Redash metadata");
+    assert_eq!(data_sources[1].id, SAMPLE_SECOND_DATA_SOURCE_ID);
+    assert_eq!(data_sources[1].name, "Example Data Source Two");
     assert_eq!(data_sources[1].ds_type, "pg");
 }
 
@@ -436,12 +436,14 @@ async fn test_list_data_sources_empty() {
 async fn test_get_data_source_success() {
     let mock_server = MockServer::start().await;
 
-    mock_get_data_source(63).mount(&mock_server).await;
+    mock_get_data_source(SAMPLE_DATA_SOURCE_ID)
+        .mount(&mock_server)
+        .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let data_source = client.get_data_source(63).await.unwrap();
+    let data_source = client.get_data_source(SAMPLE_DATA_SOURCE_ID).await.unwrap();
 
-    assert_eq!(data_source.id, 63);
+    assert_eq!(data_source.id, SAMPLE_DATA_SOURCE_ID);
     assert_eq!(data_source.name, "Test Data Source");
     assert_eq!(data_source.ds_type, "bigquery");
     assert_eq!(
@@ -468,10 +470,15 @@ async fn test_get_data_source_not_found() {
 async fn test_get_data_source_schema_success() {
     let mock_server = MockServer::start().await;
 
-    mock_get_data_source_schema(63).mount(&mock_server).await;
+    mock_get_data_source_schema(SAMPLE_DATA_SOURCE_ID)
+        .mount(&mock_server)
+        .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let schema = client.get_data_source_schema(63, false).await.unwrap();
+    let schema = client
+        .get_data_source_schema(SAMPLE_DATA_SOURCE_ID, false)
+        .await
+        .unwrap();
 
     assert_eq!(schema.schema.len(), 2);
     assert_eq!(schema.schema[0].name, "table1");
@@ -488,12 +495,14 @@ async fn test_get_data_source_schema_success() {
 async fn test_get_data_source_schema_unauthorized() {
     let mock_server = MockServer::start().await;
 
-    mock_get_data_source_schema_unauthorized(63)
+    mock_get_data_source_schema_unauthorized(SAMPLE_DATA_SOURCE_ID)
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = client.get_data_source_schema(63, false).await;
+    let result = client
+        .get_data_source_schema(SAMPLE_DATA_SOURCE_ID, false)
+        .await;
 
     assert!(result.is_err());
 }
@@ -599,8 +608,8 @@ async fn test_list_favorite_dashboards_success() {
 
     assert_eq!(response.count, 2);
     assert_eq!(response.results.len(), 2);
-    assert_eq!(response.results[0].id, 2570);
-    assert_eq!(response.results[0].name, "Firefox Desktop on SteamOS");
+    assert_eq!(response.results[0].id, SAMPLE_DASHBOARD_ID);
+    assert_eq!(response.results[0].name, "Example Dashboard");
     assert!(!response.results[0].is_archived);
 }
 
@@ -623,16 +632,16 @@ async fn test_list_favorite_dashboards_empty() {
 async fn test_get_dashboard_success() {
     let mock_server = MockServer::start().await;
 
-    mock_get_dashboard(2570, "Test Dashboard", false)
+    mock_get_dashboard(SAMPLE_DASHBOARD_ID, "Test Dashboard", false)
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let dashboard = client.get_dashboard("test-dashboard").await.unwrap();
 
-    assert_eq!(dashboard.id, 2570);
+    assert_eq!(dashboard.id, SAMPLE_DASHBOARD_ID);
     assert_eq!(dashboard.name, "Test Dashboard");
-    assert_eq!(dashboard.user_id, 530);
+    assert_eq!(dashboard.user_id, SAMPLE_USER_ID);
     assert!(!dashboard.is_archived);
     assert!(!dashboard.is_draft);
 }
@@ -655,14 +664,14 @@ async fn test_get_dashboard_not_found() {
 async fn test_get_dashboard_archived() {
     let mock_server = MockServer::start().await;
 
-    mock_get_dashboard(2570, "Archived Dashboard", true)
+    mock_get_dashboard(SAMPLE_DASHBOARD_ID, "Archived Dashboard", true)
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let dashboard = client.get_dashboard("archived-dashboard").await.unwrap();
 
-    assert_eq!(dashboard.id, 2570);
+    assert_eq!(dashboard.id, SAMPLE_DASHBOARD_ID);
     assert_eq!(dashboard.name, "Archived Dashboard");
     assert!(dashboard.is_archived);
 }
@@ -671,17 +680,17 @@ async fn test_get_dashboard_archived() {
 async fn test_update_dashboard_success() {
     let mock_server = MockServer::start().await;
 
-    mock_update_dashboard(2570, "Updated Dashboard")
+    mock_update_dashboard(SAMPLE_DASHBOARD_ID, "Updated Dashboard")
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
     let dashboard = stmo_cli::models::Dashboard {
-        id: 2570,
+        id: SAMPLE_DASHBOARD_ID,
         name: "Updated Dashboard".to_string(),
         slug: "updated-dashboard".to_string(),
-        user_id: 530,
+        user_id: SAMPLE_USER_ID,
         is_archived: false,
         is_draft: false,
         filters_enabled: false,
@@ -691,7 +700,7 @@ async fn test_update_dashboard_success() {
 
     let result = client.update_dashboard(&dashboard).await.unwrap();
 
-    assert_eq!(result.id, 2570);
+    assert_eq!(result.id, SAMPLE_DASHBOARD_ID);
     assert_eq!(result.name, "Updated Dashboard");
 }
 
@@ -699,10 +708,12 @@ async fn test_update_dashboard_success() {
 async fn test_archive_dashboard_success() {
     let mock_server = MockServer::start().await;
 
-    mock_archive_dashboard(2570).mount(&mock_server).await;
+    mock_archive_dashboard(SAMPLE_DASHBOARD_ID)
+        .mount(&mock_server)
+        .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = client.archive_dashboard(2570).await;
+    let result = client.archive_dashboard(SAMPLE_DASHBOARD_ID).await;
 
     assert!(result.is_ok());
 }
@@ -725,14 +736,17 @@ async fn test_archive_dashboard_not_found() {
 async fn test_unarchive_dashboard_success() {
     let mock_server = MockServer::start().await;
 
-    mock_unarchive_dashboard(2570, "Test Dashboard")
+    mock_unarchive_dashboard(SAMPLE_DASHBOARD_ID, "Test Dashboard")
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let dashboard = client.unarchive_dashboard(2570).await.unwrap();
+    let dashboard = client
+        .unarchive_dashboard(SAMPLE_DASHBOARD_ID)
+        .await
+        .unwrap();
 
-    assert_eq!(dashboard.id, 2570);
+    assert_eq!(dashboard.id, SAMPLE_DASHBOARD_ID);
     assert_eq!(dashboard.name, "Test Dashboard");
     assert!(!dashboard.is_archived);
 }
@@ -741,12 +755,12 @@ async fn test_unarchive_dashboard_success() {
 async fn test_unarchive_dashboard_forbidden() {
     let mock_server = MockServer::start().await;
 
-    mock_unarchive_dashboard_forbidden(2570)
+    mock_unarchive_dashboard_forbidden(SAMPLE_DASHBOARD_ID)
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = client.unarchive_dashboard(2570).await;
+    let result = client.unarchive_dashboard(SAMPLE_DASHBOARD_ID).await;
 
     assert!(result.is_err());
 }
@@ -755,12 +769,14 @@ async fn test_unarchive_dashboard_forbidden() {
 async fn test_create_widget_success() {
     let mock_server = MockServer::start().await;
 
-    mock_create_widget(2570, 75035).mount(&mock_server).await;
+    mock_create_widget(SAMPLE_DASHBOARD_ID, SAMPLE_WIDGET_ID)
+        .mount(&mock_server)
+        .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
     let widget = stmo_cli::models::CreateWidget {
-        dashboard_id: 2570,
+        dashboard_id: SAMPLE_DASHBOARD_ID,
         visualization_id: None,
         text: "Test Widget".to_string(),
         width: 1,
@@ -777,18 +793,20 @@ async fn test_create_widget_success() {
 
     let result = client.create_widget(&widget).await.unwrap();
 
-    assert_eq!(result.id, 75035);
-    assert_eq!(result.dashboard_id, 2570);
+    assert_eq!(result.id, SAMPLE_WIDGET_ID);
+    assert_eq!(result.dashboard_id, SAMPLE_DASHBOARD_ID);
 }
 
 #[tokio::test]
 async fn test_delete_widget_success() {
     let mock_server = MockServer::start().await;
 
-    mock_delete_widget(75035).mount(&mock_server).await;
+    mock_delete_widget(SAMPLE_WIDGET_ID)
+        .mount(&mock_server)
+        .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = client.delete_widget(75035).await;
+    let result = client.delete_widget(SAMPLE_WIDGET_ID).await;
 
     assert!(result.is_ok());
 }
@@ -876,7 +894,7 @@ async fn test_search_queries_passes_q_and_respects_limit() {
 
     Mock::given(method("GET"))
         .and(path("/api/queries"))
-        .and(query_param("q", "firefox"))
+        .and(query_param("q", "example"))
         .and(query_param("page", "1"))
         .and(query_param("page_size", "2"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -884,20 +902,20 @@ async fn test_search_queries_passes_q_and_respects_limit() {
             "page": 1,
             "page_size": 2,
             "results": [
-                query_json(1, "Firefox DAU"),
-                query_json(2, "Firefox MAU"),
-                query_json(3, "Firefox Crash Rate"),
+                query_json(1, "Example Query One"),
+                query_json(2, "Example Query Two"),
+                query_json(3, "Example Query Three"),
             ]
         })))
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let results = client.search_queries("firefox", 2).await.unwrap();
+    let results = client.search_queries("example", 2).await.unwrap();
 
     assert_eq!(results.len(), 2);
-    assert_eq!(results[0].name, "Firefox DAU");
-    assert_eq!(results[1].name, "Firefox MAU");
+    assert_eq!(results[0].name, "Example Query One");
+    assert_eq!(results[1].name, "Example Query Two");
 }
 
 #[tokio::test]
@@ -906,26 +924,26 @@ async fn test_search_dashboards_passes_q_and_respects_limit() {
 
     Mock::given(method("GET"))
         .and(path("/api/dashboards"))
-        .and(query_param("q", "firefox"))
+        .and(query_param("q", "example"))
         .and(query_param("page", "1"))
         .and(query_param("page_size", "2"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "count": 50,
             "results": [
-                dashboard_json(1, "firefox-dau", "Firefox DAU"),
-                dashboard_json(2, "firefox-crash", "Firefox Crash"),
-                dashboard_json(3, "firefox-beta", "Firefox Beta"),
+                dashboard_json(1, "example-dashboard-one", "Example Dashboard One"),
+                dashboard_json(2, "example-dashboard-two", "Example Dashboard Two"),
+                dashboard_json(3, "example-dashboard-three", "Example Dashboard Three"),
             ]
         })))
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let results = client.search_dashboards("firefox", 2).await.unwrap();
+    let results = client.search_dashboards("example", 2).await.unwrap();
 
     assert_eq!(results.len(), 2);
-    assert_eq!(results[0].name, "Firefox DAU");
-    assert_eq!(results[1].name, "Firefox Crash");
+    assert_eq!(results[0].name, "Example Dashboard One");
+    assert_eq!(results[1].name, "Example Dashboard Two");
 }
 
 #[tokio::test]
@@ -934,7 +952,7 @@ async fn test_search_queries_retries_on_429() {
 
     Mock::given(method("GET"))
         .and(path("/api/queries"))
-        .and(query_param("q", "firefox"))
+        .and(query_param("q", "example"))
         .respond_with(ResponseTemplate::new(429))
         .up_to_n_times(1)
         .with_priority(1)
@@ -943,20 +961,20 @@ async fn test_search_queries_retries_on_429() {
 
     Mock::given(method("GET"))
         .and(path("/api/queries"))
-        .and(query_param("q", "firefox"))
+        .and(query_param("q", "example"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "count": 1,
             "page": 1,
             "page_size": 1,
-            "results": [query_json(1, "Firefox DAU")]
+            "results": [query_json(1, "Example Query One")]
         })))
         .with_priority(2)
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let results = client.search_queries("firefox", 10).await.unwrap();
+    let results = client.search_queries("example", 10).await.unwrap();
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].name, "Firefox DAU");
+    assert_eq!(results[0].name, "Example Query One");
 }

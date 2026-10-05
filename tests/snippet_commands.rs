@@ -46,22 +46,22 @@ async fn test_list_query_snippets() {
 
     mock_list_query_snippets(&serde_json::json!([
         {
-            "id": 9,
-            "trigger": "hll_convert",
-            "description": "Snippet to display hyperloglog field as a numeric count value",
+            "id": 900_000_002,
+            "trigger": "sample_hll_count",
+            "description": "Example HLL snippet",
             "snippet": "cardinality(merge(cast(${FIELD_NAME} AS HLL)))",
             "user": null,
-            "updated_at": "2018-03-08T02:16:37.962Z",
-            "created_at": "2018-03-08T02:16:37.962Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "created_at": "2026-01-01T00:00:00Z"
         },
         {
-            "id": 31,
-            "trigger": "reviewbot_e2e_action_ctcs",
-            "description": "Action-task gap compression CTEs",
-            "snippet": "action_tasks AS (\n    SELECT 1\n)",
+            "id": 900_000_001,
+            "trigger": "sample_task_cte",
+            "description": "Example task CTE",
+            "snippet": "sample_tasks AS (\n    SELECT 1\n)",
             "user": null,
-            "updated_at": "2026-06-24T09:13:26.873Z",
-            "created_at": "2026-06-24T09:13:26.873Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "created_at": "2026-01-01T00:00:00Z"
         }
     ]))
     .mount(&mock_server)
@@ -71,9 +71,9 @@ async fn test_list_query_snippets() {
     let snippets = client.list_query_snippets().await.unwrap();
 
     assert_eq!(snippets.len(), 2);
-    assert_eq!(snippets[0].trigger, "hll_convert");
-    assert_eq!(snippets[1].id, 31);
-    assert_eq!(snippets[1].trigger, "reviewbot_e2e_action_ctcs");
+    assert_eq!(snippets[0].trigger, "sample_hll_count");
+    assert_eq!(snippets[1].id, 900_000_001);
+    assert_eq!(snippets[1].trigger, "sample_task_cte");
 }
 
 #[tokio::test]
@@ -81,19 +81,19 @@ async fn test_get_query_snippet() {
     let mock_server = wiremock::MockServer::start().await;
 
     mock_get_query_snippet(
-        31,
-        "reviewbot_e2e_action_ctcs",
-        "action_tasks AS (\n    SELECT 1\n)",
+        900_000_001,
+        "sample_task_cte",
+        "sample_tasks AS (\n    SELECT 1\n)",
     )
     .mount(&mock_server)
     .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let snippet = client.get_query_snippet(31).await.unwrap();
+    let snippet = client.get_query_snippet(900_000_001).await.unwrap();
 
-    assert_eq!(snippet.id, 31);
-    assert_eq!(snippet.trigger, "reviewbot_e2e_action_ctcs");
-    assert!(snippet.snippet.contains("action_tasks AS"));
+    assert_eq!(snippet.id, 900_000_001);
+    assert_eq!(snippet.trigger, "sample_task_cte");
+    assert!(snippet.snippet.contains("sample_tasks AS"));
 }
 
 #[tokio::test]
@@ -121,26 +121,26 @@ async fn test_update_query_snippet() {
     let mock_server = wiremock::MockServer::start().await;
 
     mock_update_query_snippet(
-        31,
-        "reviewbot_e2e_action_ctcs",
-        "action_tasks AS (\n    SELECT 2\n)",
+        900_000_001,
+        "sample_task_cte",
+        "sample_tasks AS (\n    SELECT 2\n)",
     )
     .mount(&mock_server)
     .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     let existing = QuerySnippet {
-        id: 31,
-        trigger: "reviewbot_e2e_action_ctcs".to_string(),
-        description: Some("Action-task gap compression CTEs".to_string()),
-        snippet: "action_tasks AS (\n    SELECT 2\n)".to_string(),
+        id: 900_000_001,
+        trigger: "sample_task_cte".to_string(),
+        description: Some("Example task CTE".to_string()),
+        snippet: "sample_tasks AS (\n    SELECT 2\n)".to_string(),
         user: None,
-        updated_at: "2026-06-24T09:13:26.873Z".to_string(),
-        created_at: "2026-06-24T09:13:26.873Z".to_string(),
+        updated_at: "2026-01-01T00:00:00Z".to_string(),
+        created_at: "2026-01-01T00:00:00Z".to_string(),
     };
     let updated = client.update_query_snippet(&existing).await.unwrap();
 
-    assert_eq!(updated.id, 31);
+    assert_eq!(updated.id, 900_000_001);
     assert!(updated.snippet.contains("SELECT 2"));
 }
 
@@ -177,44 +177,43 @@ async fn test_fetch_command_writes_snippet_files() {
     let mock_server = wiremock::MockServer::start().await;
 
     mock_get_query_snippet(
-        31,
-        "reviewbot_e2e_action_ctcs",
-        "action_tasks AS (\n    SELECT 1\n)",
+        900_000_001,
+        "sample_task_cte",
+        "sample_tasks AS (\n    SELECT 1\n)",
     )
     .mount(&mock_server)
     .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = stmo_cli::commands::snippets::fetch(&client, vec![31], false).await;
+    let result = stmo_cli::commands::snippets::fetch(&client, vec![900_000_001], false).await;
 
     assert!(result.is_ok());
-    let sql = std::fs::read_to_string("snippets/31-reviewbot_e2e_action_ctcs.sql").unwrap();
-    assert!(sql.contains("action_tasks AS"));
-    let yaml = std::fs::read_to_string("snippets/31-reviewbot_e2e_action_ctcs.yaml").unwrap();
-    assert!(yaml.contains("id: 31"));
-    assert!(yaml.contains("trigger: reviewbot_e2e_action_ctcs"));
+    let sql = std::fs::read_to_string("snippets/900000001-sample_task_cte.sql").unwrap();
+    assert!(sql.contains("sample_tasks AS"));
+    let yaml = std::fs::read_to_string("snippets/900000001-sample_task_cte.yaml").unwrap();
+    assert!(yaml.contains("id: 900000001"));
+    assert!(yaml.contains("trigger: sample_task_cte"));
 }
 
 #[tokio::test]
 async fn test_fetch_command_handles_trigger_with_spaces_and_quotes() {
-    // Real triggers on sql.telemetry.mozilla.org include e.g. "nan's snippet" and
-    // "stefan's date formatter" -- unlike query names/dashboard slugs, triggers are
-    // never slugified before being used in a filename here, so this proves that
-    // round-trips correctly rather than corrupting the file or the YAML.
+    // Triggers may contain spaces and quotes. Unlike query names and dashboard
+    // slugs, they are used unchanged in filenames, so this checks that the value
+    // round-trips correctly in both the file path and YAML.
     let _guard = get_test_lock().lock().await;
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_get_query_snippet(16, "nan's snippet", "parse_date(foo, bar)")
+    mock_get_query_snippet(900_000_003, "example's snippet", "parse_date(foo, bar)")
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = stmo_cli::commands::snippets::fetch(&client, vec![16], false).await;
+    let result = stmo_cli::commands::snippets::fetch(&client, vec![900_000_003], false).await;
     assert!(result.is_ok());
 
-    let sql_path = std::path::Path::new("snippets/16-nan's snippet.sql");
-    let yaml_path = std::path::Path::new("snippets/16-nan's snippet.yaml");
+    let sql_path = std::path::Path::new("snippets/900000003-example's snippet.sql");
+    let yaml_path = std::path::Path::new("snippets/900000003-example's snippet.yaml");
     assert!(sql_path.exists(), "expected {}", sql_path.display());
     assert!(yaml_path.exists(), "expected {}", yaml_path.display());
 
@@ -223,8 +222,8 @@ async fn test_fetch_command_handles_trigger_with_spaces_and_quotes() {
 
     let yaml = std::fs::read_to_string(yaml_path).unwrap();
     let metadata: stmo_cli::models::SnippetMetadata = serde_yaml::from_str(&yaml).unwrap();
-    assert_eq!(metadata.id, 16);
-    assert_eq!(metadata.trigger, "nan's snippet");
+    assert_eq!(metadata.id, 900_000_003);
+    assert_eq!(metadata.trigger, "example's snippet");
 
     // A second fetch --all must rediscover this file by id via directory scanning
     // (extract_snippet_ids_from_directory), proving the weird filename doesn't
@@ -316,9 +315,9 @@ async fn test_deploy_existing_snippet_hits_update_path() {
     let mock_server = wiremock::MockServer::start().await;
 
     mock_update_query_snippet(
-        31,
-        "reviewbot_e2e_action_ctcs",
-        "action_tasks AS (\n    SELECT 2\n)",
+        900_000_001,
+        "sample_task_cte",
+        "sample_tasks AS (\n    SELECT 2\n)",
     )
     .mount(&mock_server)
     .await;
@@ -327,20 +326,20 @@ async fn test_deploy_existing_snippet_hits_update_path() {
 
     std::fs::create_dir_all("snippets").unwrap();
     std::fs::write(
-        "snippets/31-reviewbot_e2e_action_ctcs.sql",
-        "action_tasks AS (\n    SELECT 2\n)",
+        "snippets/900000001-sample_task_cte.sql",
+        "sample_tasks AS (\n    SELECT 2\n)",
     )
     .unwrap();
     std::fs::write(
-        "snippets/31-reviewbot_e2e_action_ctcs.yaml",
-        "id: 31\ntrigger: reviewbot_e2e_action_ctcs\ndescription: Action-task gap compression CTEs\n",
+        "snippets/900000001-sample_task_cte.yaml",
+        "id: 900000001\ntrigger: sample_task_cte\ndescription: Example task CTE\n",
     )
     .unwrap();
 
-    let result = stmo_cli::commands::snippets::deploy(&client, vec![31], false).await;
+    let result = stmo_cli::commands::snippets::deploy(&client, vec![900_000_001], false).await;
 
     assert!(result.is_ok());
-    let sql = std::fs::read_to_string("snippets/31-reviewbot_e2e_action_ctcs.sql").unwrap();
+    let sql = std::fs::read_to_string("snippets/900000001-sample_task_cte.sql").unwrap();
     assert!(sql.contains("SELECT 2"));
 }
 
@@ -375,22 +374,22 @@ async fn test_list_command_succeeds_with_results() {
 
     mock_list_query_snippets(&serde_json::json!([
         {
-            "id": 31,
-            "trigger": "reviewbot_e2e_action_ctcs",
-            "description": "Action-task gap compression CTEs",
-            "snippet": "action_tasks AS (\n    SELECT 1\n)",
+            "id": 900_000_001,
+            "trigger": "sample_task_cte",
+            "description": "Example task CTE",
+            "snippet": "sample_tasks AS (\n    SELECT 1\n)",
             "user": null,
-            "updated_at": "2026-06-24T09:13:26.873Z",
-            "created_at": "2026-06-24T09:13:26.873Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "created_at": "2026-01-01T00:00:00Z"
         },
         {
-            "id": 9,
-            "trigger": "hll_convert",
+            "id": 900_000_002,
+            "trigger": "sample_hll_count",
             "description": null,
             "snippet": "cardinality(merge(cast(${FIELD_NAME} AS HLL)))",
             "user": null,
-            "updated_at": "2018-03-08T02:16:37.962Z",
-            "created_at": "2018-03-08T02:16:37.962Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "created_at": "2026-01-01T00:00:00Z"
         }
     ]))
     .mount(&mock_server)
@@ -462,20 +461,20 @@ async fn test_fetch_partial_failure_writes_successful_and_warns() {
         .mount(&mock_server)
         .await;
     mock_get_query_snippet(
-        31,
-        "reviewbot_e2e_action_ctcs",
-        "action_tasks AS (\n    SELECT 1\n)",
+        900_000_001,
+        "sample_task_cte",
+        "sample_tasks AS (\n    SELECT 1\n)",
     )
     .mount(&mock_server)
     .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = stmo_cli::commands::snippets::fetch(&client, vec![999, 31], false).await;
+    let result = stmo_cli::commands::snippets::fetch(&client, vec![999, 900_000_001], false).await;
 
     // Matches queries' fetch.rs convention: partial failures are warned about via
     // stderr and skipped, not surfaced as an overall error (unlike dashboards::fetch).
     assert!(result.is_ok());
-    assert!(std::path::Path::new("snippets/31-reviewbot_e2e_action_ctcs.sql").exists());
+    assert!(std::path::Path::new("snippets/900000001-sample_task_cte.sql").exists());
     assert!(
         !std::path::Path::new("snippets")
             .read_dir()
@@ -493,10 +492,10 @@ async fn test_deploy_bails_when_no_matching_ids() {
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
     std::fs::create_dir_all("snippets").unwrap();
-    std::fs::write("snippets/31-reviewbot_e2e_action_ctcs.sql", "SELECT 1").unwrap();
+    std::fs::write("snippets/900000001-sample_task_cte.sql", "SELECT 1").unwrap();
     std::fs::write(
-        "snippets/31-reviewbot_e2e_action_ctcs.yaml",
-        "id: 31\ntrigger: reviewbot_e2e_action_ctcs\ndescription: null\n",
+        "snippets/900000001-sample_task_cte.yaml",
+        "id: 900000001\ntrigger: sample_task_cte\ndescription: null\n",
     )
     .unwrap();
 
@@ -523,8 +522,8 @@ async fn test_deploy_bare_skips_snippet_unchanged_from_server() {
 
     mock_list_query_snippets(&serde_json::json!([
         {
-            "id": 31,
-            "trigger": "reviewbot_e2e_action_ctcs",
+            "id": 900_000_001,
+            "trigger": "sample_task_cte",
             "description": null,
             "snippet": "SELECT 1",
             "user": null,
@@ -537,10 +536,10 @@ async fn test_deploy_bare_skips_snippet_unchanged_from_server() {
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     std::fs::create_dir_all("snippets").unwrap();
-    std::fs::write("snippets/31-reviewbot_e2e_action_ctcs.sql", "SELECT 1").unwrap();
+    std::fs::write("snippets/900000001-sample_task_cte.sql", "SELECT 1").unwrap();
     std::fs::write(
-        "snippets/31-reviewbot_e2e_action_ctcs.yaml",
-        "id: 31\ntrigger: reviewbot_e2e_action_ctcs\ndescription: null\n",
+        "snippets/900000001-sample_task_cte.yaml",
+        "id: 900000001\ntrigger: sample_task_cte\ndescription: null\n",
     )
     .unwrap();
 
@@ -562,8 +561,8 @@ async fn test_deploy_bare_second_run_deploys_nothing() {
     // new body that was just pushed.
     mock_list_query_snippets(&serde_json::json!([
         {
-            "id": 31,
-            "trigger": "reviewbot_e2e_action_ctcs",
+            "id": 900_000_001,
+            "trigger": "sample_task_cte",
             "description": null,
             "snippet": "SELECT 1",
             "user": null,
@@ -577,8 +576,8 @@ async fn test_deploy_bare_second_run_deploys_nothing() {
     .await;
     mock_list_query_snippets(&serde_json::json!([
         {
-            "id": 31,
-            "trigger": "reviewbot_e2e_action_ctcs",
+            "id": 900_000_001,
+            "trigger": "sample_task_cte",
             // Matches what mock_update_query_snippet below returns — after the
             // first deploy, write_snippet_files() rewrites the local yaml from
             // exactly that response, so the second comparison must see the
@@ -593,17 +592,17 @@ async fn test_deploy_bare_second_run_deploys_nothing() {
     .with_priority(2)
     .mount(&mock_server)
     .await;
-    mock_update_query_snippet(31, "reviewbot_e2e_action_ctcs", "SELECT 2")
+    mock_update_query_snippet(900_000_001, "sample_task_cte", "SELECT 2")
         .expect(1)
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
     std::fs::create_dir_all("snippets").unwrap();
-    std::fs::write("snippets/31-reviewbot_e2e_action_ctcs.sql", "SELECT 2").unwrap();
+    std::fs::write("snippets/900000001-sample_task_cte.sql", "SELECT 2").unwrap();
     std::fs::write(
-        "snippets/31-reviewbot_e2e_action_ctcs.yaml",
-        "id: 31\ntrigger: reviewbot_e2e_action_ctcs\ndescription: null\n",
+        "snippets/900000001-sample_task_cte.yaml",
+        "id: 900000001\ntrigger: sample_task_cte\ndescription: null\n",
     )
     .unwrap();
 
@@ -627,13 +626,13 @@ async fn test_deploy_one_missing_sql_file_bails() {
 
     std::fs::create_dir_all("snippets").unwrap();
     std::fs::write(
-        "snippets/31-reviewbot_e2e_action_ctcs.yaml",
-        "id: 31\ntrigger: reviewbot_e2e_action_ctcs\ndescription: null\n",
+        "snippets/900000001-sample_task_cte.yaml",
+        "id: 900000001\ntrigger: sample_task_cte\ndescription: null\n",
     )
     .unwrap();
 
     let result =
-        stmo_cli::commands::snippets::deploy_one(&client, 31, "reviewbot_e2e_action_ctcs").await;
+        stmo_cli::commands::snippets::deploy_one(&client, 900_000_001, "sample_task_cte").await;
 
     assert!(result.is_err());
     assert!(
@@ -653,10 +652,10 @@ async fn test_deploy_one_missing_yaml_file_bails() {
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
     std::fs::create_dir_all("snippets").unwrap();
-    std::fs::write("snippets/31-reviewbot_e2e_action_ctcs.sql", "SELECT 1").unwrap();
+    std::fs::write("snippets/900000001-sample_task_cte.sql", "SELECT 1").unwrap();
 
     let result =
-        stmo_cli::commands::snippets::deploy_one(&client, 31, "reviewbot_e2e_action_ctcs").await;
+        stmo_cli::commands::snippets::deploy_one(&client, 900_000_001, "sample_task_cte").await;
 
     assert!(result.is_err());
     assert!(
@@ -676,15 +675,15 @@ async fn test_deploy_one_malformed_yaml_bails() {
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
     std::fs::create_dir_all("snippets").unwrap();
-    std::fs::write("snippets/31-reviewbot_e2e_action_ctcs.sql", "SELECT 1").unwrap();
+    std::fs::write("snippets/900000001-sample_task_cte.sql", "SELECT 1").unwrap();
     std::fs::write(
-        "snippets/31-reviewbot_e2e_action_ctcs.yaml",
+        "snippets/900000001-sample_task_cte.yaml",
         "description: missing required fields\n",
     )
     .unwrap();
 
     let result =
-        stmo_cli::commands::snippets::deploy_one(&client, 31, "reviewbot_e2e_action_ctcs").await;
+        stmo_cli::commands::snippets::deploy_one(&client, 900_000_001, "sample_task_cte").await;
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("Failed to parse"));

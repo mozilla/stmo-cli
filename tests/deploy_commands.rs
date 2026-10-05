@@ -59,7 +59,7 @@ async fn test_deploy_new_query_with_id_zero() {
     std::fs::write("queries/0-test-query.sql", "SELECT 1").unwrap();
     std::fs::write(
         "queries/0-test-query.yaml",
-        "id: 0\nname: Test Query\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations: []\ntags: null\n",
+        "id: 0\nname: Test Query\ndescription: null\ndata_source_id: 9500000001\nschedule: null\noptions:\n  parameters: []\nvisualizations: []\ntags: null\n",
     )
     .unwrap();
 
@@ -178,7 +178,7 @@ async fn test_deploy_new_query_does_not_duplicate_auto_created_table() {
         .mount(&mock_server)
         .await;
 
-    mock_update_visualization(99999)
+    mock_update_visualization(SAMPLE_VISUALIZATION_ID)
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -189,7 +189,7 @@ async fn test_deploy_new_query_does_not_duplicate_auto_created_table() {
     std::fs::write("queries/0-test-query.sql", "SELECT 1").unwrap();
     std::fs::write(
         "queries/0-test-query.yaml",
-        "id: 0\nname: Test Query\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - id: 0\n    name: Table\n    type: TABLE\n    options: {}\n    description: null\ntags: null\n",
+        "id: 0\nname: Test Query\ndescription: null\ndata_source_id: 9500000001\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - id: 0\n    name: Table\n    type: TABLE\n    options: {}\n    description: null\ntags: null\n",
     )
     .unwrap();
 
@@ -234,7 +234,7 @@ async fn test_deploy_new_viz_does_not_overwrite_existing() {
     std::fs::write("queries/42-test-query.sql", "SELECT 1").unwrap();
     std::fs::write(
         "queries/42-test-query.yaml",
-        "id: 42\nname: Test Query\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - id: 200\n    name: Existing Chart\n    type: CHART\n    options: {}\n    description: null\n  - name: New Chart\n    type: CHART\n    options: {}\n    description: null\ntags: null\n",
+        "id: 42\nname: Test Query\ndescription: null\ndata_source_id: 9500000001\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - id: 200\n    name: Existing Chart\n    type: CHART\n    options: {}\n    description: null\n  - name: New Chart\n    type: CHART\n    options: {}\n    description: null\ntags: null\n",
     )
     .unwrap();
 
@@ -275,7 +275,7 @@ async fn test_deploy_writes_back_newly_created_viz() {
     std::fs::write(
         "queries/42-test-query.yaml",
         format!(
-            "id: 42\nname: Test Query\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - id: 200\n    name: Chart\n    type: CHART\n    options: {{}}\n    description: null\n  - name: New Chart\n    type: CHART\n    options:\n      {LOCAL_VIZ_OPTIONS_YAML}    description: null\ntags: null\n"
+            "id: 42\nname: Test Query\ndescription: null\ndata_source_id: 9500000001\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - id: 200\n    name: Chart\n    type: CHART\n    options: {{}}\n    description: null\n  - name: New Chart\n    type: CHART\n    options:\n      {LOCAL_VIZ_OPTIONS_YAML}    description: null\ntags: null\n"
         ),
     )
     .unwrap();
@@ -312,7 +312,7 @@ async fn test_deploy_writes_back_local_options_for_matched_viz() {
     std::fs::write(
         "queries/42-test-query.yaml",
         format!(
-            "id: 42\nname: Test Query\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - name: Chart\n    type: CHART\n    options:\n      {LOCAL_VIZ_OPTIONS_YAML}    description: null\ntags: null\n"
+            "id: 42\nname: Test Query\ndescription: null\ndata_source_id: 9500000001\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - name: Chart\n    type: CHART\n    options:\n      {LOCAL_VIZ_OPTIONS_YAML}    description: null\ntags: null\n"
         ),
     )
     .unwrap();
@@ -338,7 +338,7 @@ async fn test_deploy_new_query_writes_back_created_viz() {
     let mock_server = wiremock::MockServer::start().await;
 
     let initial_vizs = serde_json::json!([
-        {"id": 99999, "name": "Table", "type": "TABLE", "options": {}, "description": null}
+        {"id": SAMPLE_VISUALIZATION_ID, "name": "Table", "type": "TABLE", "options": {}, "description": null}
     ]);
     mount_stateful_query(&mock_server, 42, "New Query", initial_vizs).await;
 
@@ -349,7 +349,7 @@ async fn test_deploy_new_query_writes_back_created_viz() {
     std::fs::write(
         "queries/0-new-query.yaml",
         format!(
-            "id: 0\nname: New Query\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - id: 0\n    name: Table\n    type: TABLE\n    options: {{}}\n    description: null\n  - name: New Chart\n    type: CHART\n    options:\n      {LOCAL_VIZ_OPTIONS_YAML}    description: null\ntags: null\n"
+            "id: 0\nname: New Query\ndescription: null\ndata_source_id: 9500000001\nschedule: null\noptions:\n  parameters: []\nvisualizations:\n  - id: 0\n    name: Table\n    type: TABLE\n    options: {{}}\n    description: null\n  - name: New Chart\n    type: CHART\n    options:\n      {LOCAL_VIZ_OPTIONS_YAML}    description: null\ntags: null\n"
         ),
     )
     .unwrap();
@@ -361,8 +361,11 @@ async fn test_deploy_new_query_writes_back_created_viz() {
     let metadata: stmo_cli::models::QueryMetadata = serde_yaml::from_str(&yaml).unwrap();
 
     assert!(
-        metadata.visualizations.iter().any(|v| v.id == Some(99999)),
-        "expected visualization 99999 in:\n{yaml}"
+        metadata
+            .visualizations
+            .iter()
+            .any(|v| v.id == Some(SAMPLE_VISUALIZATION_ID)),
+        "expected the sample visualization in:\n{yaml}"
     );
     let created = metadata
         .visualizations
@@ -446,7 +449,7 @@ fn write_query_files(id: u64, slug: &str, sql: &str, name: &str) {
     std::fs::write(
         format!("queries/{id}-{slug}.yaml"),
         format!(
-            "id: {id}\nname: {name}\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations: []\ntags: null\n"
+            "id: {id}\nname: {name}\ndescription: null\ndata_source_id: 9500000001\nschedule: null\noptions:\n  parameters: []\nvisualizations: []\ntags: null\n"
         ),
     )
     .unwrap();

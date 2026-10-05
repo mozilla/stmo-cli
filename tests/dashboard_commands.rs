@@ -5,10 +5,128 @@ mod common;
 
 use common::*;
 use std::env;
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use stmo_cli::api::RedashClient;
 use tempfile::TempDir;
 use tokio::sync::Mutex;
+use wiremock::{Mock, Request, Respond, ResponseTemplate};
+
+const SOURCE_QUERY_ID: u64 = 9_200_000_101;
+const TARGET_QUERY_ID: u64 = 9_200_000_102;
+const SOURCE_VISUALIZATION_ID: u64 = 9_300_000_101;
+const TARGET_VISUALIZATION_ID: u64 = 9_300_000_102;
+const TABLE_VISUALIZATION_ID: u64 = 9_300_000_103;
+
+struct DashboardStateResponder {
+    dashboard_id: u64,
+    slug: String,
+    widgets: Arc<StdMutex<Vec<serde_json::Value>>>,
+}
+
+impl Respond for DashboardStateResponder {
+    fn respond(&self, _request: &Request) -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": self.dashboard_id,
+            "name": "My Dashboard",
+            "slug": self.slug,
+            "user_id": SAMPLE_USER_ID,
+            "is_archived": false,
+            "is_draft": false,
+            "dashboard_filters_enabled": false,
+            "tags": [],
+            "widgets": self.widgets.lock().unwrap().clone()
+        }))
+    }
+}
+
+struct CreateWidgetStateResponder {
+    dashboard_id: u64,
+    widgets: Arc<StdMutex<Vec<serde_json::Value>>>,
+    fail_creation: bool,
+}
+
+impl Respond for CreateWidgetStateResponder {
+    fn respond(&self, request: &Request) -> ResponseTemplate {
+        if self.fail_creation {
+            return ResponseTemplate::new(500);
+        }
+
+        let body: serde_json::Value = request.body_json().unwrap();
+        let visualization_id = body["visualization_id"].as_u64().unwrap();
+        let (query_id, name) = if visualization_id == TARGET_VISUALIZATION_ID {
+            (TARGET_QUERY_ID, "New Chart")
+        } else {
+            (SOURCE_QUERY_ID, "Old Chart")
+        };
+        let widget = serde_json::json!({
+            "id": SAMPLE_CREATED_WIDGET_ID,
+            "dashboard_id": self.dashboard_id,
+            "width": body["width"],
+            "visualization_id": visualization_id,
+            "visualization": {
+                "id": visualization_id,
+                "name": name,
+                "query": {"id": query_id, "name": "My Query"}
+            },
+            "text": body["text"],
+            "options": body["options"]
+        });
+        self.widgets.lock().unwrap().push(widget.clone());
+        ResponseTemplate::new(200).set_body_json(widget)
+    }
+}
+
+struct UpdateWidgetStateResponder {
+    widgets: Arc<StdMutex<Vec<serde_json::Value>>>,
+}
+
+impl Respond for UpdateWidgetStateResponder {
+    fn respond(&self, request: &Request) -> ResponseTemplate {
+        let body: serde_json::Value = request.body_json().unwrap();
+        let widget_id: u64 = request
+            .url
+            .path()
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let mut widgets = self.widgets.lock().unwrap();
+        let widget = widgets
+            .iter_mut()
+            .find(|widget| widget["id"] == widget_id)
+            .unwrap();
+        widget["text"] = body["text"].clone();
+        widget["options"] = body["options"].clone();
+        ResponseTemplate::new(200).set_body_json(widget.clone())
+    }
+}
+
+struct DeleteWidgetStateResponder {
+    widgets: Arc<StdMutex<Vec<serde_json::Value>>>,
+    fail_widget_id: Option<u64>,
+}
+
+impl Respond for DeleteWidgetStateResponder {
+    fn respond(&self, request: &Request) -> ResponseTemplate {
+        let widget_id: u64 = request
+            .url
+            .path()
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        if self.fail_widget_id == Some(widget_id) {
+            return ResponseTemplate::new(500);
+        }
+        self.widgets
+            .lock()
+            .unwrap()
+            .retain(|widget| widget["id"] != widget_id);
+        ResponseTemplate::new(204)
+    }
+}
 
 static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -39,13 +157,132 @@ impl Drop for TempWorkDir {
     }
 }
 
+struct QueryReassignmentFixture {
+    _temp_dir: TempWorkDir,
+    widgets: Arc<StdMutex<Vec<serde_json::Value>>>,
+    client: RedashClient,
+    yaml_path: String,
+    slug: String,
+}
+
+async fn query_reassignment_fixture(
+    fail_creation: bool,
+    fail_delete_widget_id: Option<u64>,
+) -> QueryReassignmentFixture {
+    let temp_dir = TempWorkDir::new();
+    let mock_server = wiremock::MockServer::start().await;
+    let dashboard_id = SAMPLE_DASHBOARD_ID;
+    let old_widget_id = SAMPLE_WIDGET_ID;
+    let source_query_id = SOURCE_QUERY_ID;
+    let target_query_id = TARGET_QUERY_ID;
+    let slug = "query-reassignment-dashboard";
+    let widgets = Arc::new(StdMutex::new(vec![serde_json::json!({
+        "id": old_widget_id,
+        "dashboard_id": dashboard_id,
+        "width": 1,
+        "visualization_id": SOURCE_VISUALIZATION_ID,
+        "visualization": {
+            "id": SOURCE_VISUALIZATION_ID,
+            "name": "Old Chart",
+            "query": {"id": source_query_id, "name": "Query A"}
+        },
+        "text": "",
+        "options": {"position": {"col": 0, "row": 0, "sizeX": 3, "sizeY": 2}}
+    })]));
+
+    Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path(format!("/api/dashboards/{slug}")))
+        .respond_with(DashboardStateResponder {
+            dashboard_id,
+            slug: slug.to_string(),
+            widgets: Arc::clone(&widgets),
+        })
+        .mount(&mock_server)
+        .await;
+
+    let query_b_visualizations = serde_json::json!([
+        {"id": TARGET_VISUALIZATION_ID, "name": "New Chart", "type": "CHART", "options": {}, "description": null}
+    ]);
+    mock_get_query_with_vizs(target_query_id, "Query B", &query_b_visualizations)
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/api/widgets"))
+        .respond_with(CreateWidgetStateResponder {
+            dashboard_id,
+            widgets: Arc::clone(&widgets),
+            fail_creation,
+        })
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path(format!(
+            "/api/widgets/{old_widget_id}"
+        )))
+        .respond_with(UpdateWidgetStateResponder {
+            widgets: Arc::clone(&widgets),
+        })
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(wiremock::matchers::method("DELETE"))
+        .and(wiremock::matchers::path_regex(r"/api/widgets/\d+"))
+        .respond_with(DeleteWidgetStateResponder {
+            widgets: Arc::clone(&widgets),
+            fail_widget_id: fail_delete_widget_id,
+        })
+        .mount(&mock_server)
+        .await;
+
+    mock_update_dashboard(dashboard_id, "My Dashboard")
+        .mount(&mock_server)
+        .await;
+
+    std::fs::create_dir_all("dashboards").unwrap();
+    let yaml_content = format!(
+        "id: {dashboard_id}
+name: My Dashboard
+slug: {slug}
+user_id: {SAMPLE_USER_ID}
+is_draft: false
+is_archived: false
+dashboard_filters_enabled: false
+tags: []
+widgets:
+  - id: {old_widget_id}
+    visualization_id: {SOURCE_VISUALIZATION_ID}
+    query_id: {target_query_id}
+    visualization_name: New Chart
+    options:
+      position:
+        col: 3
+        row: 5
+        sizeX: 6
+        sizeY: 4
+"
+    );
+    let yaml_path = format!("dashboards/{dashboard_id}-{slug}.yaml");
+    std::fs::write(&yaml_path, yaml_content).unwrap();
+    let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
+
+    QueryReassignmentFixture {
+        _temp_dir: temp_dir,
+        widgets,
+        client,
+        yaml_path,
+        slug: slug.to_string(),
+    }
+}
+
 #[tokio::test]
 async fn test_fetch_with_all_failures_returns_error() {
     let _guard = get_test_lock().lock().await;
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_get_dashboard_not_found("firefox-desktop-on-steamos")
+    mock_get_dashboard_not_found("example-dashboard")
         .mount(&mock_server)
         .await;
 
@@ -58,7 +295,7 @@ async fn test_fetch_with_all_failures_returns_error() {
     let result = stmo_cli::commands::dashboards::fetch(
         &client,
         vec![
-            "firefox-desktop-on-steamos".to_string(),
+            "example-dashboard".to_string(),
             "test-dashboard".to_string(),
         ],
     )
@@ -67,7 +304,7 @@ async fn test_fetch_with_all_failures_returns_error() {
     assert!(result.is_err());
     let error = result.unwrap_err();
     assert!(error.to_string().contains("2 dashboard(s) failed to fetch"));
-    assert!(error.to_string().contains("firefox-desktop-on-steamos"));
+    assert!(error.to_string().contains("example-dashboard"));
     assert!(error.to_string().contains("test-dashboard"));
 }
 
@@ -77,7 +314,7 @@ async fn test_fetch_with_partial_failures_returns_error() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_get_dashboard(2570, "Firefox Desktop on SteamOS", false)
+    mock_get_dashboard(SAMPLE_DASHBOARD_ID, "Example Dashboard", false)
         .mount(&mock_server)
         .await;
 
@@ -90,7 +327,7 @@ async fn test_fetch_with_partial_failures_returns_error() {
     let result = stmo_cli::commands::dashboards::fetch(
         &client,
         vec![
-            "firefox-desktop-on-steamos".to_string(),
+            "example-dashboard".to_string(),
             "test-dashboard".to_string(),
         ],
     )
@@ -115,11 +352,11 @@ async fn test_fetch_with_all_success_returns_ok() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_get_dashboard(2570, "Firefox Desktop on SteamOS", false)
+    mock_get_dashboard(SAMPLE_DASHBOARD_ID, "Example Dashboard", false)
         .mount(&mock_server)
         .await;
 
-    mock_get_dashboard(2558, "Test Dashboard", false)
+    mock_get_dashboard(SAMPLE_SECOND_DASHBOARD_ID, "Test Dashboard", false)
         .mount(&mock_server)
         .await;
 
@@ -128,7 +365,7 @@ async fn test_fetch_with_all_success_returns_ok() {
     let result = stmo_cli::commands::dashboards::fetch(
         &client,
         vec![
-            "firefox-desktop-on-steamos".to_string(),
+            "example-dashboard".to_string(),
             "test-dashboard".to_string(),
         ],
     )
@@ -160,7 +397,7 @@ async fn test_archive_with_all_failures_returns_error() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_get_dashboard_not_found("firefox-desktop-on-steamos")
+    mock_get_dashboard_not_found("example-dashboard")
         .mount(&mock_server)
         .await;
 
@@ -173,7 +410,7 @@ async fn test_archive_with_all_failures_returns_error() {
     let result = stmo_cli::commands::dashboards::archive(
         &client,
         vec![
-            "firefox-desktop-on-steamos".to_string(),
+            "example-dashboard".to_string(),
             "test-dashboard".to_string(),
         ],
     )
@@ -190,19 +427,19 @@ async fn test_unarchive_with_failures_returns_error() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_get_dashboard(2570, "Firefox Desktop on SteamOS", true)
+    mock_get_dashboard(SAMPLE_DASHBOARD_ID, "Example Dashboard", true)
         .mount(&mock_server)
         .await;
 
-    mock_unarchive_dashboard_forbidden(2570)
+    mock_unarchive_dashboard_forbidden(SAMPLE_DASHBOARD_ID)
         .mount(&mock_server)
         .await;
 
-    mock_get_dashboard(2558, "Test Dashboard", true)
+    mock_get_dashboard(SAMPLE_SECOND_DASHBOARD_ID, "Test Dashboard", true)
         .mount(&mock_server)
         .await;
 
-    mock_unarchive_dashboard(2558, "Test Dashboard")
+    mock_unarchive_dashboard(SAMPLE_SECOND_DASHBOARD_ID, "Test Dashboard")
         .mount(&mock_server)
         .await;
 
@@ -211,7 +448,7 @@ async fn test_unarchive_with_failures_returns_error() {
     let result = stmo_cli::commands::dashboards::unarchive(
         &client,
         vec![
-            "firefox-desktop-on-steamos".to_string(),
+            "example-dashboard".to_string(),
             "test-dashboard".to_string(),
         ],
     )
@@ -224,7 +461,7 @@ async fn test_unarchive_with_failures_returns_error() {
             .to_string()
             .contains("1 dashboard(s) failed to unarchive")
     );
-    assert!(error.to_string().contains("firefox-desktop-on-steamos"));
+    assert!(error.to_string().contains("example-dashboard"));
 }
 
 #[tokio::test]
@@ -234,9 +471,9 @@ async fn test_fetch_with_triple_dash_slug() {
     let mock_server = wiremock::MockServer::start().await;
 
     mock_get_dashboard_with_slug(
-        2_006_698,
-        "Bug 2006698 - ccov build regression",
-        "bug-2006698---ccov-build-regression",
+        SAMPLE_DASHBOARD_ID,
+        "Example - Dashboard",
+        "example---dashboard",
         false,
     )
     .mount(&mock_server)
@@ -244,26 +481,25 @@ async fn test_fetch_with_triple_dash_slug() {
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
-    let result = stmo_cli::commands::dashboards::fetch(
-        &client,
-        vec!["bug-2006698---ccov-build-regression".to_string()],
-    )
-    .await;
+    let result =
+        stmo_cli::commands::dashboards::fetch(&client, vec!["example---dashboard".to_string()])
+            .await;
 
     assert!(result.is_ok());
 
     let dashboards_dir = std::path::Path::new("dashboards");
     assert!(dashboards_dir.exists());
 
-    let expected_file = dashboards_dir.join("2006698-bug-2006698---ccov-build-regression.yaml");
+    let expected_file =
+        dashboards_dir.join(format!("{SAMPLE_DASHBOARD_ID}-example---dashboard.yaml"));
     assert!(
         expected_file.exists(),
         "Expected file {expected_file:?} to exist"
     );
 
     let yaml_content = std::fs::read_to_string(&expected_file).unwrap();
-    assert!(yaml_content.contains("slug: bug-2006698---ccov-build-regression"));
-    assert!(yaml_content.contains("Bug 2006698 - ccov build regression"));
+    assert!(yaml_content.contains("slug: example---dashboard"));
+    assert!(yaml_content.contains("Example - Dashboard"));
 }
 
 #[tokio::test]
@@ -273,23 +509,23 @@ async fn test_deploy_with_triple_dash_slug() {
     let mock_server = wiremock::MockServer::start().await;
 
     mock_get_dashboard_with_slug(
-        2_006_698,
-        "Bug 2006698 - ccov build regression",
-        "bug-2006698---ccov-build-regression",
+        SAMPLE_DASHBOARD_ID,
+        "Example - Dashboard",
+        "example---dashboard",
         false,
     )
     .mount(&mock_server)
     .await;
 
-    mock_update_dashboard(2_006_698, "Bug 2006698 - ccov build regression")
+    mock_update_dashboard(SAMPLE_DASHBOARD_ID, "Example - Dashboard")
         .mount(&mock_server)
         .await;
 
     // Re-fetch uses the original slug
     mock_get_dashboard_with_slug(
-        2_006_698,
-        "Bug 2006698 - ccov build regression",
-        "bug-2006698---ccov-build-regression",
+        SAMPLE_DASHBOARD_ID,
+        "Example - Dashboard",
+        "example---dashboard",
         false,
     )
     .mount(&mock_server)
@@ -299,25 +535,27 @@ async fn test_deploy_with_triple_dash_slug() {
 
     std::fs::create_dir_all("dashboards").unwrap();
 
-    let yaml_content = r"id: 2006698
-name: Bug 2006698 - ccov build regression
-slug: bug-2006698---ccov-build-regression
-user_id: 530
+    let yaml_content = format!(
+        "id: {SAMPLE_DASHBOARD_ID}
+name: Example - Dashboard
+slug: example---dashboard
+user_id: {SAMPLE_USER_ID}
 is_draft: false
 is_archived: false
 dashboard_filters_enabled: false
 tags: []
 widgets: []
-";
+"
+    );
     std::fs::write(
-        "dashboards/2006698-bug-2006698---ccov-build-regression.yaml",
+        format!("dashboards/{SAMPLE_DASHBOARD_ID}-example---dashboard.yaml"),
         yaml_content,
     )
     .unwrap();
 
     let result = stmo_cli::commands::dashboards::deploy(
         &client,
-        vec!["bug-2006698---ccov-build-regression".to_string()],
+        vec!["example---dashboard".to_string()],
         false,
     )
     .await;
@@ -332,33 +570,33 @@ async fn test_archive_with_triple_dash_slug() {
     let mock_server = wiremock::MockServer::start().await;
 
     mock_get_dashboard_with_slug(
-        2_006_698,
-        "Bug 2006698 - ccov build regression",
-        "bug-2006698---ccov-build-regression",
+        SAMPLE_DASHBOARD_ID,
+        "Example - Dashboard",
+        "example---dashboard",
         false,
     )
     .mount(&mock_server)
     .await;
 
-    mock_archive_dashboard(2_006_698).mount(&mock_server).await;
+    mock_archive_dashboard(SAMPLE_DASHBOARD_ID)
+        .mount(&mock_server)
+        .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
     std::fs::create_dir_all("dashboards").unwrap();
-    let yaml_file = "dashboards/2006698-bug-2006698---ccov-build-regression.yaml";
-    std::fs::write(yaml_file, "test content").unwrap();
+    let yaml_file = format!("dashboards/{SAMPLE_DASHBOARD_ID}-example---dashboard.yaml");
+    std::fs::write(&yaml_file, "test content").unwrap();
 
-    assert!(std::path::Path::new(yaml_file).exists());
+    assert!(std::path::Path::new(&yaml_file).exists());
 
-    let result = stmo_cli::commands::dashboards::archive(
-        &client,
-        vec!["bug-2006698---ccov-build-regression".to_string()],
-    )
-    .await;
+    let result =
+        stmo_cli::commands::dashboards::archive(&client, vec!["example---dashboard".to_string()])
+            .await;
 
     assert!(result.is_ok());
     assert!(
-        !std::path::Path::new(yaml_file).exists(),
+        !std::path::Path::new(&yaml_file).exists(),
         "File should be deleted after archiving"
     );
 }
@@ -369,22 +607,31 @@ async fn test_deploy_new_dashboard_with_id_zero() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_create_dashboard(2621, "My New Dashboard", "my-new-dashboard")
-        .mount(&mock_server)
-        .await;
+    mock_create_dashboard(
+        SAMPLE_CREATED_DASHBOARD_ID,
+        "My New Dashboard",
+        "my-new-dashboard",
+    )
+    .mount(&mock_server)
+    .await;
 
     mock_favorite_dashboard("my-new-dashboard")
         .mount(&mock_server)
         .await;
 
-    mock_update_dashboard(2621, "My New Dashboard")
+    mock_update_dashboard(SAMPLE_CREATED_DASHBOARD_ID, "My New Dashboard")
         .mount(&mock_server)
         .await;
 
     // Re-fetch uses the slug returned by the create response
-    mock_get_dashboard_with_slug(2621, "My New Dashboard", "my-new-dashboard", false)
-        .mount(&mock_server)
-        .await;
+    mock_get_dashboard_with_slug(
+        SAMPLE_CREATED_DASHBOARD_ID,
+        "My New Dashboard",
+        "my-new-dashboard",
+        false,
+    )
+    .mount(&mock_server)
+    .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
@@ -419,7 +666,10 @@ widgets: []
 
     // New file with server-assigned ID should exist
     assert!(
-        std::path::Path::new("dashboards/2621-my-new-dashboard.yaml").exists(),
+        std::path::Path::new(&format!(
+            "dashboards/{SAMPLE_CREATED_DASHBOARD_ID}-my-new-dashboard.yaml"
+        ))
+        .exists(),
         "New file with server ID should be created"
     );
 }
@@ -430,8 +680,8 @@ async fn test_deploy_auto_populates_parameter_mappings() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    let dashboard_id = 2570_u64;
-    let query_id = 12345_u64;
+    let dashboard_id = SAMPLE_DASHBOARD_ID;
+    let query_id = SAMPLE_QUERY_ID;
     let slug = "my-parameterized-dashboard";
 
     mock_get_dashboard_with_slug(dashboard_id, "My Parameterized Dashboard", slug, false)
@@ -446,7 +696,7 @@ async fn test_deploy_auto_populates_parameter_mappings() {
     .mount(&mock_server)
     .await;
 
-    mock_create_widget(dashboard_id, 99001)
+    mock_create_widget(dashboard_id, SAMPLE_CREATED_WIDGET_ID)
         .mount(&mock_server)
         .await;
 
@@ -466,14 +716,14 @@ async fn test_deploy_auto_populates_parameter_mappings() {
         "id: {dashboard_id}
 name: My Parameterized Dashboard
 slug: {slug}
-user_id: 530
+user_id: {SAMPLE_USER_ID}
 is_draft: false
 is_archived: false
 dashboard_filters_enabled: false
 tags: []
 widgets:
   - id: 0
-    visualization_id: 279588
+    visualization_id: {SAMPLE_VISUALIZATION_ID}
     query_id: {query_id}
     visualization_name: My Viz
     text: ''
@@ -536,12 +786,12 @@ async fn test_deploy_resolves_visualization_id_from_query_and_name() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    let dashboard_id = 2570_u64;
-    let query_id = 12345_u64;
+    let dashboard_id = SAMPLE_DASHBOARD_ID;
+    let query_id = SAMPLE_QUERY_ID;
     let slug = "my-dashboard";
     let vizs = serde_json::json!([
-        {"id": 55555, "name": "My Chart", "type": "CHART", "options": {}, "description": null},
-        {"id": 55556, "name": "Table", "type": "TABLE", "options": {}, "description": null}
+        {"id": SAMPLE_VISUALIZATION_ID, "name": "My Chart", "type": "CHART", "options": {}, "description": null},
+        {"id": SOURCE_VISUALIZATION_ID, "name": "Table", "type": "TABLE", "options": {}, "description": null}
     ]);
 
     mock_get_dashboard_with_slug(dashboard_id, "My Dashboard", slug, false)
@@ -552,7 +802,7 @@ async fn test_deploy_resolves_visualization_id_from_query_and_name() {
         .mount(&mock_server)
         .await;
 
-    mock_create_widget(dashboard_id, 99001)
+    mock_create_widget(dashboard_id, SAMPLE_CREATED_WIDGET_ID)
         .mount(&mock_server)
         .await;
 
@@ -572,7 +822,7 @@ async fn test_deploy_resolves_visualization_id_from_query_and_name() {
         "id: {dashboard_id}
 name: My Dashboard
 slug: {slug}
-user_id: 530
+user_id: {SAMPLE_USER_ID}
 is_draft: false
 is_archived: false
 dashboard_filters_enabled: false
@@ -609,7 +859,7 @@ widgets:
 
     let body: serde_json::Value = serde_json::from_slice(&widget_create_req.body).unwrap();
     assert_eq!(
-        body["visualization_id"], 55555,
+        body["visualization_id"], SAMPLE_VISUALIZATION_ID,
         "visualization_id should be resolved from query_id + visualization_name, got: {}",
         body["visualization_id"]
     );
@@ -621,11 +871,11 @@ async fn test_deploy_fails_when_visualization_name_not_found() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    let dashboard_id = 2570_u64;
-    let query_id = 12345_u64;
+    let dashboard_id = SAMPLE_DASHBOARD_ID;
+    let query_id = SAMPLE_QUERY_ID;
     let slug = "my-dashboard";
     let vizs = serde_json::json!([
-        {"id": 99999, "name": "Table", "type": "TABLE", "options": {}, "description": null}
+        {"id": TABLE_VISUALIZATION_ID, "name": "Table", "type": "TABLE", "options": {}, "description": null}
     ]);
 
     mock_get_dashboard_with_slug(dashboard_id, "My Dashboard", slug, false)
@@ -644,7 +894,7 @@ async fn test_deploy_fails_when_visualization_name_not_found() {
         "id: {dashboard_id}
 name: My Dashboard
 slug: {slug}
-user_id: 530
+user_id: {SAMPLE_USER_ID}
 is_draft: false
 is_archived: false
 dashboard_filters_enabled: false
@@ -682,13 +932,13 @@ async fn test_deploy_updates_existing_widgets() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    let dashboard_id = 2570_u64;
-    let query_id = 12345_u64;
-    let widget_id = 75035_u64;
+    let dashboard_id = SAMPLE_DASHBOARD_ID;
+    let query_id = SAMPLE_QUERY_ID;
+    let widget_id = SAMPLE_WIDGET_ID;
     let slug = "my-dashboard";
     let vizs = serde_json::json!([
-        {"id": 55557, "name": "Updated Chart", "type": "CHART", "options": {}, "description": null},
-        {"id": 55556, "name": "Table", "type": "TABLE", "options": {}, "description": null}
+        {"id": TARGET_VISUALIZATION_ID, "name": "Updated Chart", "type": "CHART", "options": {}, "description": null},
+        {"id": SOURCE_VISUALIZATION_ID, "name": "Table", "type": "TABLE", "options": {}, "description": null}
     ]);
 
     // First GET: server dashboard already has the existing widget
@@ -699,7 +949,7 @@ async fn test_deploy_updates_existing_widgets() {
                 "id": dashboard_id,
                 "name": "My Dashboard",
                 "slug": slug,
-                "user_id": 530,
+                "user_id": SAMPLE_USER_ID,
                 "is_archived": false,
                 "is_draft": false,
                 "dashboard_filters_enabled": false,
@@ -708,8 +958,8 @@ async fn test_deploy_updates_existing_widgets() {
                     "id": widget_id,
                     "dashboard_id": dashboard_id,
                     "width": 1,
-                    "visualization_id": 55556,
-                    "visualization": {"id": 55556, "name": "Table", "query": {"id": query_id, "name": "My Query"}},
+                    "visualization_id": TARGET_VISUALIZATION_ID,
+                    "visualization": {"id": TARGET_VISUALIZATION_ID, "name": "Updated Chart", "query": {"id": query_id, "name": "My Query"}},
                     "text": "",
                     "options": {"position": {"col": 0, "row": 0, "sizeX": 3, "sizeY": 2}}
                 }]
@@ -743,7 +993,7 @@ async fn test_deploy_updates_existing_widgets() {
         "id: {dashboard_id}
 name: My Dashboard
 slug: {slug}
-user_id: 530
+user_id: {SAMPLE_USER_ID}
 is_draft: false
 is_archived: false
 dashboard_filters_enabled: false
@@ -788,9 +1038,78 @@ widgets:
 
     let body: serde_json::Value = serde_json::from_slice(&widget_update_req.unwrap().body).unwrap();
     assert_eq!(
-        body["visualization_id"], 55557,
+        body["visualization_id"], TARGET_VISUALIZATION_ID,
         "visualization_id should resolve to Updated Chart"
     );
     assert_eq!(body["options"]["position"]["col"], 3);
     assert_eq!(body["options"]["position"]["row"], 5);
+}
+
+#[tokio::test]
+async fn test_deploy_recreates_widget_when_query_changes() {
+    let _guard = get_test_lock().lock().await;
+    let fixture = query_reassignment_fixture(false, None).await;
+
+    let result =
+        stmo_cli::commands::dashboards::deploy(&fixture.client, vec![fixture.slug.clone()], false)
+            .await;
+    assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
+
+    let current_widgets = fixture.widgets.lock().unwrap();
+    assert_eq!(current_widgets.len(), 1, "old widget should be replaced");
+    assert_eq!(current_widgets[0]["id"], SAMPLE_CREATED_WIDGET_ID);
+    assert_eq!(
+        current_widgets[0]["visualization"]["query"]["id"],
+        TARGET_QUERY_ID
+    );
+    assert_eq!(current_widgets[0]["visualization"]["name"], "New Chart");
+    drop(current_widgets);
+
+    let saved_yaml = std::fs::read_to_string(fixture.yaml_path).unwrap();
+    let saved: serde_yaml::Value = serde_yaml::from_str(&saved_yaml).unwrap();
+    let saved_widget = &saved["widgets"][0];
+    assert_eq!(saved_widget["id"].as_u64(), Some(SAMPLE_CREATED_WIDGET_ID));
+    assert_eq!(saved_widget["query_id"].as_u64(), Some(TARGET_QUERY_ID));
+    assert_eq!(
+        saved_widget["visualization_name"].as_str(),
+        Some("New Chart")
+    );
+}
+
+#[tokio::test]
+async fn test_deploy_keeps_existing_widget_when_replacement_creation_fails() {
+    let _guard = get_test_lock().lock().await;
+    let fixture = query_reassignment_fixture(true, None).await;
+
+    let result =
+        stmo_cli::commands::dashboards::deploy(&fixture.client, vec![fixture.slug.clone()], false)
+            .await;
+
+    assert!(
+        result.is_err(),
+        "replacement creation failure should fail deploy"
+    );
+    let widgets = fixture.widgets.lock().unwrap();
+    assert_eq!(widgets.len(), 1);
+    assert_eq!(widgets[0]["id"], SAMPLE_WIDGET_ID);
+    assert_eq!(widgets[0]["visualization"]["query"]["id"], SOURCE_QUERY_ID);
+}
+
+#[tokio::test]
+async fn test_deploy_cleans_up_replacement_when_old_widget_deletion_fails() {
+    let _guard = get_test_lock().lock().await;
+    let fixture = query_reassignment_fixture(false, Some(SAMPLE_WIDGET_ID)).await;
+
+    let result =
+        stmo_cli::commands::dashboards::deploy(&fixture.client, vec![fixture.slug.clone()], false)
+            .await;
+
+    assert!(
+        result.is_err(),
+        "old widget deletion failure should fail deploy"
+    );
+    let widgets = fixture.widgets.lock().unwrap();
+    assert_eq!(widgets.len(), 1, "replacement should be cleaned up");
+    assert_eq!(widgets[0]["id"], SAMPLE_WIDGET_ID);
+    assert_eq!(widgets[0]["visualization"]["query"]["id"], SOURCE_QUERY_ID);
 }

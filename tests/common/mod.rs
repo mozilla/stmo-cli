@@ -10,6 +10,18 @@ use tempfile::TempDir;
 use wiremock::matchers::{body_partial_json, method, path, path_regex};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
+// Synthetic fixture IDs kept separate from live Redash IDs.
+pub const SAMPLE_DASHBOARD_ID: u64 = 9_000_000_001;
+pub const SAMPLE_SECOND_DASHBOARD_ID: u64 = 9_000_000_002;
+pub const SAMPLE_CREATED_DASHBOARD_ID: u64 = 9_000_000_003;
+pub const SAMPLE_WIDGET_ID: u64 = 9_100_000_001;
+pub const SAMPLE_QUERY_ID: u64 = 9_200_000_001;
+pub const SAMPLE_VISUALIZATION_ID: u64 = 9_300_000_001;
+pub const SAMPLE_DATA_SOURCE_ID: u64 = 9_500_000_001;
+pub const SAMPLE_SECOND_DATA_SOURCE_ID: u64 = 9_500_000_002;
+pub const SAMPLE_USER_ID: u64 = 9_600_000_001;
+pub const SAMPLE_CREATED_WIDGET_ID: u64 = 9_100_000_002;
+
 pub struct TestContext {
     pub mock_server: MockServer,
     pub temp_dir: TempDir,
@@ -187,8 +199,8 @@ pub fn mock_list_data_sources() -> Mock {
         .and(path("/api/data_sources"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             {
-                "id": 63,
-                "name": "Telemetry (BigQuery)",
+                "id": SAMPLE_DATA_SOURCE_ID,
+                "name": "Example Data Source",
                 "type": "bigquery",
                 "description": null,
                 "syntax": "sql",
@@ -197,12 +209,12 @@ pub fn mock_list_data_sources() -> Mock {
                 "view_only": false,
                 "queue_name": "bq_queries",
                 "scheduled_queue_name": "bq_scheduled_queries",
-                "groups": {"2": false},
+                "groups": {"9000000001": false},
                 "options": {}
             },
             {
-                "id": 10,
-                "name": "Redash metadata",
+                "id": SAMPLE_SECOND_DATA_SOURCE_ID,
+                "name": "Example Data Source Two",
                 "type": "pg",
                 "description": null,
                 "syntax": "sql",
@@ -211,7 +223,7 @@ pub fn mock_list_data_sources() -> Mock {
                 "view_only": false,
                 "queue_name": "queries",
                 "scheduled_queue_name": "scheduled_queries",
-                "groups": {"2": false},
+                "groups": {"9000000001": false},
                 "options": {}
             }
         ])))
@@ -290,7 +302,7 @@ pub fn mock_get_query_with_sql(query_id: u64, name: &str, sql: &str, is_archived
             "name": name,
             "description": null,
             "query": sql,
-            "data_source_id": 63,
+            "data_source_id": SAMPLE_DATA_SOURCE_ID,
             "user": null,
             "schedule": null,
             "options": {"parameters": []},
@@ -332,7 +344,7 @@ pub fn mock_get_query_with_parameters(
             "name": name,
             "description": null,
             "query": "SELECT 1",
-            "data_source_id": 63,
+            "data_source_id": SAMPLE_DATA_SOURCE_ID,
             "user": null,
             "schedule": null,
             "options": {"parameters": params},
@@ -353,13 +365,13 @@ pub fn mock_get_query_with_table_viz(query_id: u64, name: &str) -> Mock {
             "name": name,
             "description": null,
             "query": "SELECT 1",
-            "data_source_id": 63,
+            "data_source_id": SAMPLE_DATA_SOURCE_ID,
             "user": null,
             "schedule": null,
             "options": {"parameters": []},
             "visualizations": [
                 {
-                    "id": 99999,
+                    "id": SAMPLE_VISUALIZATION_ID,
                     "name": "Table",
                     "type": "TABLE",
                     "options": {},
@@ -394,7 +406,7 @@ pub fn mock_archive_query(query_id: u64, name: &str) -> Mock {
             "name": name,
             "description": null,
             "query": "SELECT 1",
-            "data_source_id": 63,
+            "data_source_id": SAMPLE_DATA_SOURCE_ID,
             "user": null,
             "schedule": null,
             "options": {"parameters": []},
@@ -415,7 +427,7 @@ pub fn mock_unarchive_query(query_id: u64, name: &str) -> Mock {
             "name": name,
             "description": null,
             "query": "SELECT 1",
-            "data_source_id": 63,
+            "data_source_id": SAMPLE_DATA_SOURCE_ID,
             "user": null,
             "schedule": null,
             "options": {"parameters": []},
@@ -448,7 +460,7 @@ pub fn mock_create_query(id: u64, name: &str) -> Mock {
             "name": name,
             "description": null,
             "query": "SELECT 1",
-            "data_source_id": 63,
+            "data_source_id": SAMPLE_DATA_SOURCE_ID,
             "user": null,
             "schedule": null,
             "options": {"parameters": []},
@@ -468,7 +480,7 @@ pub fn mock_create_dashboard(id: u64, name: &str, slug: &str) -> Mock {
             "id": id,
             "name": name,
             "slug": slug,
-            "user_id": 530,
+            "user_id": SAMPLE_USER_ID,
             "is_archived": false,
             "is_draft": true,
             "dashboard_filters_enabled": false,
@@ -483,14 +495,14 @@ pub fn mock_list_favorite_dashboards(count: u64) -> Mock {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "results": [
                 {
-                    "id": 2570,
-                    "name": "Firefox Desktop on SteamOS",
-                    "slug": "firefox-desktop-on-steamos",
+                    "id": SAMPLE_DASHBOARD_ID,
+                    "name": "Example Dashboard",
+                    "slug": "example-dashboard",
                     "is_draft": false,
                     "is_archived": false
                 },
                 {
-                    "id": 2558,
+                    "id": SAMPLE_SECOND_DASHBOARD_ID,
                     "name": "Test Dashboard",
                     "slug": "test-dashboard",
                     "is_draft": false,
@@ -522,7 +534,7 @@ pub fn mock_get_dashboard_with_slug(id: u64, name: &str, slug: &str, is_archived
             "id": id,
             "name": name,
             "slug": slug,
-            "user_id": 530,
+            "user_id": SAMPLE_USER_ID,
             "is_archived": is_archived,
             "is_draft": false,
             "dashboard_filters_enabled": false,
@@ -538,7 +550,7 @@ pub fn mock_get_dashboard_by_id(id: u64, name: &str, slug: &str, is_archived: bo
             "id": id,
             "name": name,
             "slug": slug,
-            "user_id": 530,
+            "user_id": SAMPLE_USER_ID,
             "is_archived": is_archived,
             "is_draft": false,
             "dashboard_filters_enabled": false,
@@ -560,7 +572,7 @@ pub fn mock_update_dashboard(id: u64, name: &str) -> Mock {
             "id": id,
             "name": name,
             "slug": name.to_lowercase().replace(' ', "-"),
-            "user_id": 530,
+            "user_id": SAMPLE_USER_ID,
             "is_archived": false,
             "is_draft": false,
             "dashboard_filters_enabled": false,
@@ -588,7 +600,7 @@ pub fn mock_unarchive_dashboard(id: u64, name: &str) -> Mock {
             "id": id,
             "name": name,
             "slug": name.to_lowercase().replace(' ', "-"),
-            "user_id": 530,
+            "user_id": SAMPLE_USER_ID,
             "is_archived": false,
             "is_draft": false,
             "dashboard_filters_enabled": false,
@@ -695,7 +707,7 @@ pub fn mock_update_query_with_vizs(query_id: u64, name: &str, vizs: &serde_json:
             "name": name,
             "description": null,
             "query": "SELECT 1",
-            "data_source_id": 63,
+            "data_source_id": SAMPLE_DATA_SOURCE_ID,
             "user": null,
             "schedule": null,
             "options": {"parameters": []},
@@ -782,7 +794,7 @@ pub fn mock_get_query_with_vizs(query_id: u64, name: &str, vizs: &serde_json::Va
             "name": name,
             "description": null,
             "query": "SELECT 1",
-            "data_source_id": 63,
+            "data_source_id": SAMPLE_DATA_SOURCE_ID,
             "user": null,
             "schedule": null,
             "options": {"parameters": []},
@@ -807,7 +819,7 @@ pub fn mock_create_query_named(id: u64, name: &str) -> Mock {
             "name": name,
             "description": null,
             "query": "SELECT 1",
-            "data_source_id": 63,
+            "data_source_id": SAMPLE_DATA_SOURCE_ID,
             "user": null,
             "schedule": null,
             "options": {"parameters": []},
@@ -849,7 +861,7 @@ impl Respond for QueryStateResponder {
             "name": self.name,
             "description": null,
             "query": "SELECT 1",
-            "data_source_id": 63,
+            "data_source_id": SAMPLE_DATA_SOURCE_ID,
             "user": null,
             "schedule": null,
             "options": {"parameters": []},
