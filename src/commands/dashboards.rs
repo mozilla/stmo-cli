@@ -11,6 +11,32 @@ use crate::models::{
     build_dashboard_level_parameter_mappings,
 };
 
+fn dashboard_metadata(dashboard: &Dashboard) -> DashboardMetadata {
+    DashboardMetadata {
+        id: dashboard.id,
+        name: dashboard.name.clone(),
+        slug: dashboard.slug.clone(),
+        user_id: dashboard.user_id,
+        is_draft: dashboard.is_draft,
+        is_archived: dashboard.is_archived,
+        filters_enabled: dashboard.filters_enabled,
+        tags: dashboard.tags.clone(),
+        widgets: dashboard
+            .widgets
+            .iter()
+            .map(|widget| WidgetMetadata {
+                id: widget.id,
+                width: widget.width,
+                visualization_id: widget.visualization_id,
+                query_id: widget.visualization.as_ref().map(|viz| viz.query.id),
+                visualization_name: widget.visualization.as_ref().map(|viz| viz.name.clone()),
+                text: widget.text.clone(),
+                options: widget.options.clone(),
+            })
+            .collect(),
+    }
+}
+
 fn extract_dashboard_slugs_from_path(dashboards_dir: &Path) -> Result<Vec<String>> {
     if !dashboards_dir.exists() {
         return Ok(Vec::new());
@@ -209,33 +235,8 @@ fn save_dashboard_yaml(
     dashboard: &crate::models::Dashboard,
     old_yaml_path: Option<std::path::PathBuf>,
 ) -> Result<()> {
-    use crate::models::Widget;
-
     let filename = format!("dashboards/{}-{}.yaml", dashboard.id, dashboard.slug);
-
-    let metadata = DashboardMetadata {
-        id: dashboard.id,
-        name: dashboard.name.clone(),
-        slug: dashboard.slug.clone(),
-        user_id: dashboard.user_id,
-        is_draft: dashboard.is_draft,
-        is_archived: dashboard.is_archived,
-        filters_enabled: dashboard.filters_enabled,
-        tags: dashboard.tags.clone(),
-        widgets: dashboard
-            .widgets
-            .iter()
-            .map(|w: &Widget| WidgetMetadata {
-                id: w.id,
-                width: w.width,
-                visualization_id: w.visualization_id,
-                query_id: w.visualization.as_ref().map(|v| v.query.id),
-                visualization_name: w.visualization.as_ref().map(|v| v.name.clone()),
-                text: w.text.clone(),
-                options: w.options.clone(),
-            })
-            .collect(),
-    };
+    let metadata = dashboard_metadata(dashboard);
 
     let yaml_content =
         serde_yaml::to_string(&metadata).context("Failed to serialize dashboard metadata")?;
@@ -555,6 +556,46 @@ pub async fn unarchive(client: &RedashClient, dashboard_slugs: Vec<String>) -> R
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn dashboard_metadata_copies_server_widget_metadata() {
+        let dashboard = serde_json::from_value::<Dashboard>(serde_json::json!({
+            "id": 42,
+            "name": "Test Dashboard",
+            "slug": "test-dashboard",
+            "user_id": 530,
+            "is_archived": false,
+            "is_draft": false,
+            "dashboard_filters_enabled": false,
+            "tags": ["test"],
+            "widgets": [{
+                "id": 7,
+                "dashboard_id": 42,
+                "width": 2,
+                "visualization_id": 8,
+                "visualization": {
+                    "id": 8,
+                    "name": "Chart",
+                    "query": {"id": 9, "name": "Query"}
+                },
+                "text": "caption",
+                "options": {
+                    "position": {"col": 1, "row": 2, "sizeX": 3, "sizeY": 4}
+                }
+            }]
+        }))
+        .unwrap();
+
+        let metadata = dashboard_metadata(&dashboard);
+        assert_eq!(metadata.id, 42);
+        assert_eq!(metadata.widgets.len(), 1);
+        assert_eq!(metadata.widgets[0].query_id, Some(9));
+        assert_eq!(
+            metadata.widgets[0].visualization_name.as_deref(),
+            Some("Chart")
+        );
+        assert_eq!(metadata.widgets[0].options.position.col, 1);
+    }
 
     #[test]
     fn test_extract_dashboard_slugs_from_directory_empty() {
