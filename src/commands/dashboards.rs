@@ -184,21 +184,8 @@ pub async fn fetch(client: &RedashClient, dashboard_slugs: Vec<String>) -> Resul
 pub async fn deploy(client: &RedashClient, dashboard_slugs: Vec<String>, all: bool) -> Result<()> {
     let slugs_to_deploy = dashboard_slugs_to_deploy(dashboard_slugs, all, Path::new("dashboards"))?;
 
-    let mut success_count = 0;
-    let mut failed_slugs = Vec::new();
-
-    for slug in &slugs_to_deploy {
-        match deploy_single_dashboard(client, slug, Path::new("dashboards")).await {
-            Ok(name) => {
-                println!("  ✓ {name}");
-                success_count += 1;
-            }
-            Err(e) => {
-                eprintln!("  ⚠ Dashboard '{slug}' failed to deploy: {e}");
-                failed_slugs.push(slug.clone());
-            }
-        }
-    }
+    let (success_count, failed_slugs) =
+        deploy_dashboards(client, &slugs_to_deploy, Path::new("dashboards")).await;
 
     if failed_slugs.is_empty() {
         println!("\n✓ All dashboards deployed successfully");
@@ -211,6 +198,30 @@ pub async fn deploy(client: &RedashClient, dashboard_slugs: Vec<String>, all: bo
             failed_slugs.join(", ")
         );
     }
+}
+
+async fn deploy_dashboards(
+    client: &RedashClient,
+    dashboard_slugs: &[String],
+    dashboards_dir: &Path,
+) -> (usize, Vec<String>) {
+    let mut success_count = 0;
+    let mut failed_slugs = Vec::new();
+
+    for slug in dashboard_slugs {
+        match deploy_single_dashboard(client, slug, dashboards_dir).await {
+            Ok(name) => {
+                println!("  ✓ {name}");
+                success_count += 1;
+            }
+            Err(e) => {
+                eprintln!("  ⚠ Dashboard '{slug}' failed to deploy: {e}");
+                failed_slugs.push(slug.clone());
+            }
+        }
+    }
+
+    (success_count, failed_slugs)
 }
 
 fn dashboard_slugs_to_deploy(
@@ -752,6 +763,24 @@ mod tests {
 
         let empty_dir = TempDir::new().unwrap();
         assert!(dashboard_slugs_to_deploy(vec![], true, empty_dir.path()).is_err());
+    }
+
+    #[tokio::test]
+    async fn deploy_dashboards_collects_per_dashboard_failures() {
+        let mock_server = MockServer::start().await;
+        let dashboards_dir = TempDir::new().unwrap();
+        fs::write(dashboards_dir.path().join("1-first.yaml"), "widgets: [").unwrap();
+        fs::write(dashboards_dir.path().join("2-second.yaml"), "widgets: [").unwrap();
+
+        let (success_count, failed_slugs) = deploy_dashboards(
+            &test_client(&mock_server),
+            &["first".to_string(), "second".to_string()],
+            dashboards_dir.path(),
+        )
+        .await;
+
+        assert_eq!(success_count, 0);
+        assert_eq!(failed_slugs, ["first", "second"]);
     }
 
     #[test]
