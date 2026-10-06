@@ -444,6 +444,27 @@ async fn prepare_dashboard_deployment(
     }
 }
 
+async fn update_dashboard_settings(
+    client: &RedashClient,
+    dashboard_id: u64,
+    metadata: &DashboardMetadata,
+    any_widget_has_params: bool,
+) -> Result<()> {
+    let dashboard = Dashboard {
+        id: dashboard_id,
+        name: metadata.name.clone(),
+        slug: metadata.slug.clone(),
+        user_id: metadata.user_id,
+        is_archived: metadata.is_archived,
+        is_draft: metadata.is_draft,
+        filters_enabled: any_widget_has_params || metadata.filters_enabled,
+        tags: metadata.tags.clone(),
+        widgets: vec![],
+    };
+    client.update_dashboard(&dashboard).await?;
+    Ok(())
+}
+
 async fn deploy_single_dashboard(
     client: &RedashClient,
     dashboard_slug: &str,
@@ -467,19 +488,7 @@ async fn deploy_single_dashboard(
             deploy_dashboard_widget(client, target.id, widget, &mut query_cache).await?;
     }
 
-    let updated_dashboard = Dashboard {
-        id: target.id,
-        name: local_metadata.name.clone(),
-        slug: local_metadata.slug.clone(),
-        user_id: local_metadata.user_id,
-        is_archived: local_metadata.is_archived,
-        is_draft: local_metadata.is_draft,
-        filters_enabled: any_widget_has_params || local_metadata.filters_enabled,
-        tags: local_metadata.tags.clone(),
-        widgets: vec![],
-    };
-
-    client.update_dashboard(&updated_dashboard).await?;
+    update_dashboard_settings(client, target.id, &local_metadata, any_widget_has_params).await?;
 
     let refreshed = client.get_dashboard(&target.slug).await?;
 
@@ -772,6 +781,38 @@ mod tests {
         assert_eq!(target.id, SAMPLE_DASHBOARD_ID);
         assert_eq!(target.slug, "existing-dashboard");
         assert!(target.old_yaml_path.is_none());
+    }
+
+    #[tokio::test]
+    async fn update_dashboard_settings_sends_local_metadata_and_parameter_state() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!("/api/dashboards/{SAMPLE_DASHBOARD_ID}")))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(test_dashboard_json(
+                    SAMPLE_DASHBOARD_ID,
+                    "Test Dashboard",
+                    "test-dashboard",
+                    &serde_json::json!([]),
+                )),
+            )
+            .mount(&mock_server)
+            .await;
+
+        update_dashboard_settings(
+            &test_client(&mock_server),
+            SAMPLE_DASHBOARD_ID,
+            &test_dashboard_metadata(SAMPLE_DASHBOARD_ID, "test-dashboard"),
+            true,
+        )
+        .await
+        .unwrap();
+
+        let requests = mock_server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(body["id"], SAMPLE_DASHBOARD_ID);
+        assert_eq!(body["dashboard_filters_enabled"], true);
+        assert_eq!(body["tags"], serde_json::json!(["test"]));
     }
 
     #[test]
