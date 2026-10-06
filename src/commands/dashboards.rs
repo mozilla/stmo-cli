@@ -364,6 +364,30 @@ async fn resolve_widget_options(
     Ok((options, has_params))
 }
 
+async fn deploy_dashboard_widget(
+    client: &RedashClient,
+    dashboard_id: u64,
+    widget: &WidgetMetadata,
+    query_cache: &mut HashMap<u64, Query>,
+) -> Result<bool> {
+    let (options, has_params) = resolve_widget_options(client, widget, query_cache).await?;
+    let payload = CreateWidget {
+        dashboard_id,
+        visualization_id: resolve_visualization_id(client, widget, query_cache).await?,
+        text: widget.text.clone(),
+        options,
+        width: if widget.id == 0 { 1 } else { widget.width },
+    };
+
+    if widget.id == 0 {
+        client.create_widget(&payload).await?;
+    } else {
+        client.update_widget(widget.id, &payload).await?;
+    }
+
+    Ok(has_params)
+}
+
 async fn deploy_single_dashboard(
     client: &RedashClient,
     dashboard_slug: &str,
@@ -414,23 +438,8 @@ async fn deploy_single_dashboard(
     let mut any_widget_has_params = false;
 
     for widget in &local_metadata.widgets {
-        let (options, has_params) =
-            resolve_widget_options(client, widget, &mut query_cache).await?;
-        if has_params {
-            any_widget_has_params = true;
-        }
-        let payload = CreateWidget {
-            dashboard_id: server_dashboard_id,
-            visualization_id: resolve_visualization_id(client, widget, &mut query_cache).await?,
-            text: widget.text.clone(),
-            options,
-            width: if widget.id == 0 { 1 } else { widget.width },
-        };
-        if widget.id == 0 {
-            client.create_widget(&payload).await?;
-        } else {
-            client.update_widget(widget.id, &payload).await?;
-        }
+        any_widget_has_params |=
+            deploy_dashboard_widget(client, server_dashboard_id, widget, &mut query_cache).await?;
     }
 
     let updated_dashboard = Dashboard {
@@ -568,6 +577,7 @@ pub async fn unarchive(client: &RedashClient, dashboard_slugs: Vec<String>) -> R
 #[allow(clippy::missing_errors_doc)]
 mod tests {
     use super::*;
+    use crate::models::{WidgetOptions, WidgetPosition};
     use tempfile::TempDir;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -582,7 +592,7 @@ mod tests {
             "id": id,
             "name": name,
             "slug": slug,
-            "user_id": 530,
+            "user_id": SAMPLE_USER_ID,
             "is_archived": false,
             "is_draft": false,
             "dashboard_filters_enabled": false,
@@ -600,6 +610,53 @@ mod tests {
     const THIRD_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_003;
     const FOURTH_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_004;
     const SAMPLE_USER_ID: u64 = 9_600_000_001;
+    const SAMPLE_WIDGET_ID: u64 = 9_100_000_001;
+    const CREATED_WIDGET_ID: u64 = 9_100_000_002;
+    const SAMPLE_VISUALIZATION_ID: u64 = 9_300_000_001;
+
+    fn test_widget_json(id: u64, dashboard_id: u64) -> serde_json::Value {
+        serde_json::json!({
+            "id": id,
+            "dashboard_id": dashboard_id,
+            "width": 1,
+            "visualization_id": SAMPLE_VISUALIZATION_ID,
+            "visualization": null,
+            "text": "",
+            "options": {
+                "position": {"col": 0, "row": 0, "sizeX": 3, "sizeY": 2}
+            }
+        })
+    }
+
+    fn test_create_widget(dashboard_id: u64) -> CreateWidget {
+        CreateWidget {
+            dashboard_id,
+            visualization_id: Some(SAMPLE_VISUALIZATION_ID),
+            text: String::new(),
+            width: 1,
+            options: WidgetOptions {
+                position: WidgetPosition {
+                    col: 0,
+                    row: 0,
+                    size_x: 3,
+                    size_y: 2,
+                },
+                parameter_mappings: None,
+            },
+        }
+    }
+
+    fn test_widget_metadata(id: u64, visualization_id: Option<u64>) -> WidgetMetadata {
+        WidgetMetadata {
+            id,
+            width: 1,
+            visualization_id,
+            query_id: None,
+            visualization_name: None,
+            text: String::new(),
+            options: test_create_widget(0).options,
+        }
+    }
 
     fn test_dashboard_metadata(id: u64, slug: &str) -> DashboardMetadata {
         DashboardMetadata {
@@ -767,6 +824,66 @@ mod tests {
 
         let empty_dir = TempDir::new().unwrap();
         assert!(dashboard_slugs_to_deploy(vec![], true, empty_dir.path()).is_err());
+    }
+
+    #[tokio::test]
+    async fn deploy_dashboard_widget_creates_new_widget() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/widgets"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(test_widget_json(CREATED_WIDGET_ID, SAMPLE_DASHBOARD_ID)),
+            )
+            .mount(&mock_server)
+            .await;
+        let widget = test_widget_metadata(0, Some(SAMPLE_VISUALIZATION_ID));
+
+        let has_params = deploy_dashboard_widget(
+            &test_client(&mock_server),
+            SAMPLE_DASHBOARD_ID,
+            &widget,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap();
+
+        assert!(!has_params);
+        let requests = mock_server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(body["dashboard_id"], SAMPLE_DASHBOARD_ID);
+        assert_eq!(body["visualization_id"], SAMPLE_VISUALIZATION_ID);
+    }
+
+    #[tokio::test]
+    async fn deploy_dashboard_widget_updates_existing_widget() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!("/api/widgets/{SAMPLE_WIDGET_ID}")))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(test_widget_json(SAMPLE_WIDGET_ID, SAMPLE_DASHBOARD_ID)),
+            )
+            .mount(&mock_server)
+            .await;
+        let widget = test_widget_metadata(SAMPLE_WIDGET_ID, Some(SAMPLE_VISUALIZATION_ID));
+
+        let has_params = deploy_dashboard_widget(
+            &test_client(&mock_server),
+            SAMPLE_DASHBOARD_ID,
+            &widget,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap();
+
+        assert!(!has_params);
+        let requests = mock_server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0].url.path(),
+            format!("/api/widgets/{SAMPLE_WIDGET_ID}")
+        );
     }
 
     #[tokio::test]
