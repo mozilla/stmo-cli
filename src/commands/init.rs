@@ -11,7 +11,7 @@ const TEMPLATE_PRE_COMMIT: &str = include_str!("../../templates/init/pre-commit-
 const TEMPLATE_SQLFLUFF: &str = include_str!("../../templates/init/sqlfluff");
 const TEMPLATE_YAMLLINT: &str = include_str!("../../templates/init/yamllint");
 const TEMPLATE_GITIGNORE: &str = include_str!("../../templates/init/gitignore");
-const TEMPLATE_CLAUDE_MD: &str = include_str!("../../templates/init/CLAUDE.md");
+const TEMPLATE_AGENTS_MD: &str = include_str!("../../templates/init/AGENTS.md");
 
 struct ScaffoldFile {
     path: &'static str,
@@ -46,7 +46,7 @@ const PRECOMMIT_FILES: &[ScaffoldFile] = &[ScaffoldFile {
 
 const CLAUDE_MD_FILE: ScaffoldFile = ScaffoldFile {
     path: "CLAUDE.md",
-    content: TEMPLATE_CLAUDE_MD,
+    content: TEMPLATE_AGENTS_MD,
     description: "AI assistant instructions",
 };
 
@@ -913,9 +913,9 @@ mod tests {
 
         assert!(TEMPLATE_GITIGNORE.contains(".DS_Store"));
 
-        assert!(TEMPLATE_CLAUDE_MD.contains("stmo-cli"));
-        assert!(TEMPLATE_CLAUDE_MD.contains("Quick Reference"));
-        assert!(TEMPLATE_CLAUDE_MD.contains("snippets"));
+        assert!(TEMPLATE_AGENTS_MD.contains("stmo-cli"));
+        assert!(TEMPLATE_AGENTS_MD.contains("Quick Reference"));
+        assert!(TEMPLATE_AGENTS_MD.contains("snippets"));
     }
 
     #[test]

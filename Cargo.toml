@@ -12,9 +12,10 @@ readme = "README.md"
 keywords = ["redash", "cli", "sql", "version-control"]
 categories = ["command-line-utilities"]
 exclude = [
-    "/CLAUDE.md",
+    "/AGENTS.md",
     "/.pre-commit-config.yaml",
     "/.claude",
+    "/.agents",
     "/xtask",
     "/.cargo",
     "/scripts",
