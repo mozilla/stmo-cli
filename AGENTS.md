@@ -35,7 +35,7 @@ src/
 └── commands/
     ├── mod.rs           # OutputFormat enum
     ├── discover.rs      # List own queries or full-text search queries + dashboards
-    ├── init.rs          # Interactive scaffold wizard (git/commit/linters/pre-commit/CLAUDE.md all opt-in)
+    ├── init.rs          # Interactive scaffold wizard (git/commit/linters/pre-commit/AGENTS.md all opt-in)
     ├── fetch.rs         # Download queries, slugify()
     ├── deploy.rs        # Upload changes
     ├── execute.rs       # Execute queries

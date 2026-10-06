@@ -2,7 +2,8 @@
 
 ## How it works
 
-stmo-cli is a CLI that Claude Code calls on your behalf. Install it, set your API key, and Claude Code can:
+stmo-cli is a CLI that AI coding assistants such as Claude Code and Codex can use on
+your behalf. Install it and set your API key. It can then help you:
 
 - **Explore** — discover data sources, find existing queries, browse schemas
 - **Write** — create new Redash queries with proper BigQuery SQL
@@ -10,13 +11,13 @@ stmo-cli is a CLI that Claude Code calls on your behalf. Install it, set your AP
 - **Execute** — run queries and inspect results
 - **Analyze** — export data for deeper analysis with other tools
 
-For example, ask Claude Code to:
+For example, ask Claude Code or Codex to:
 - "Find queries about Firefox DAU"
 - "Write a query to track [metric] over time"
 - "Fetch and run query #12345"
 - "Explore what telemetry tables are available"
 
-Pair it with the [mozdata plugin](https://github.com/mozilla/internal-aidev-plugins/tree/main/plugins/mozdata) for telemetry expertise and probe discovery.
+Claude Code users can pair it with the [mozdata plugin](https://github.com/mozilla/internal-aidev-plugins/tree/main/plugins/mozdata) for telemetry expertise and probe discovery. Codex users can use `stmo-cli` directly.
 
 ## Prerequisites
 
@@ -51,13 +52,13 @@ cargo build --release
 
 2. Provide the key:
 
-**On macOS**, run this once in your own terminal (not through Claude Code, which has no
-terminal to prompt in):
+**On macOS**, run this once in your own terminal; the command needs an interactive
+prompt:
 ```bash
 stmo-cli login
 ```
 This stores the key encrypted in the macOS Keychain (service `stmo-cli`) and reads it
-back automatically from then on — every Claude Code session, every worktree, no env var,
+back automatically from then on — every assistant session, every worktree, no env var,
 no manual export. The first `stmo-cli login` (or the first command run with no key set,
 if you're in a terminal) prompts you for the key with a hidden `security` prompt; grant
 "Always Allow" once when macOS asks, and later reads are silent.
@@ -87,7 +88,7 @@ anything:
 ? Create an initial commit?               [y/N]   (only asked if you said yes above)
 ? Add linter configs (.sqlfluff, .yamllint)?  [Y/n]
 ? Install pre-commit hooks?                [y/N]   (only asked if git + linters + pre-commit are all available)
-? Add CLAUDE.md for AI assistants?         [Y/n]
+? Add AGENTS.md for AI assistants?          [Y/n]
 ```
 `queries/` and `dashboards/` are always created; everything else is opt-in. `init` never
 runs git on your behalf unless you say yes — no more surprise commits.

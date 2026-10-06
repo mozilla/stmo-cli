@@ -10,7 +10,7 @@ use moz_cli_version_check::VersionChecker;
 
 #[derive(Parser)]
 #[command(name = "stmo-cli", version)]
-#[command(about = "Turn Claude Code into a data analyst on sql.telemetry.mozilla.org", long_about = None)]
+#[command(about = "Turn AI coding assistants into data analysts on sql.telemetry.mozilla.org", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -412,8 +412,8 @@ fn is_llm_environment() -> bool {
 
 const LLM_HELP: &str = r#"stmo-cli — Redash CLI for sql.telemetry.mozilla.org. Explore data sources, run queries, deploy dashboards.
 REDASH_API_KEY required | REDASH_URL optional (default: https://sql.telemetry.mozilla.org)
-On macOS, REDASH_API_KEY falls back to the 'stmo-cli' item in the macOS Keychain; run `stmo-cli login` once in your own terminal to store it there (a Claude Code session has no terminal to prompt in).
-`init` is an interactive wizard (git repo? initial commit? linters? pre-commit hooks? CLAUDE.md?) and likewise needs a real terminal — run it yourself, not from an AI coding assistant session.
+On macOS, REDASH_API_KEY falls back to the 'stmo-cli' item in the macOS Keychain; run `stmo-cli login` once in your own terminal to store it there (an AI coding assistant session may not have an interactive terminal to prompt in).
+`init` is an interactive wizard (git repo? initial commit? linters? pre-commit hooks? AGENTS.md?) and likewise needs a real terminal — run it yourself, not from an AI coding assistant session.
 API key: https://sql.telemetry.mozilla.org/users/me → API Key section
 
 discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N] [--timeout SECS]
@@ -534,10 +534,10 @@ mod llm_help_guard {
 
     #[test]
     fn skill_defers_to_help_for_the_command_catalog() {
-        let skill = include_str!("../.claude/skills/stmo/SKILL.md");
+        let skill = include_str!("../.agents/skills/stmo/SKILL.md");
         assert!(
             skill.contains("stmo-cli --help"),
-            "The vendored SKILL.md (.claude/skills/stmo/SKILL.md) must instruct running \
+            "The canonical SKILL.md (.agents/skills/stmo/SKILL.md) must instruct running \
              `stmo-cli --help` for the command/flag catalog, so it stays version-matched \
              instead of restating (and drifting from) LLM_HELP."
         );

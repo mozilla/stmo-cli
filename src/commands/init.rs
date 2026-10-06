@@ -44,33 +44,34 @@ const PRECOMMIT_FILES: &[ScaffoldFile] = &[ScaffoldFile {
     description: "pre-commit hooks config",
 }];
 
-const CLAUDE_MD_FILE: ScaffoldFile = ScaffoldFile {
-    path: "CLAUDE.md",
+const AGENTS_MD_FILE: ScaffoldFile = ScaffoldFile {
+    path: "AGENTS.md",
     content: TEMPLATE_AGENTS_MD,
     description: "AI assistant instructions",
 };
 
-// Every filename `init` might ever write, across all choice combinations —
-// used to recognize an existing scaffold regardless of which features a past
-// run opted into.
+// Scaffold markers let `init` recognize an existing scaffold regardless of
+// which features a past run opted into. CLAUDE.md remains recognized for
+// compatibility with older scaffolds, but is no longer generated.
 const KNOWN_SCAFFOLD_PATHS: &[&str] = &[
     ".gitignore",
     ".sqlfluff",
     ".yamllint",
     ".pre-commit-config.yaml",
+    "AGENTS.md",
     "CLAUDE.md",
 ];
 
 // Five independent yes/no wizard answers, not state-machine states — a
 // state machine or nested enums would model relationships that don't exist
-// here (e.g. `linters` and `claude_md` are fully orthogonal to each other).
+// here (e.g. `linters` and `agent_instructions` are fully orthogonal to each other).
 #[allow(clippy::struct_excessive_bools)]
 pub struct InitChoices {
     pub git: bool,
     pub commit: bool,
     pub linters: bool,
     pub precommit: bool,
-    pub claude_md: bool,
+    pub agent_instructions: bool,
 }
 
 #[derive(Debug)]
@@ -316,7 +317,7 @@ fn scaffold(target_dir: &Path, choices: &InitChoices) -> Result<Summary> {
             }
         }
     }
-    if choices.claude_md && write_if_missing(target_dir, &CLAUDE_MD_FILE)? {
+    if choices.agent_instructions && write_if_missing(target_dir, &AGENTS_MD_FILE)? {
         files_created += 1;
     }
 
@@ -457,8 +458,8 @@ fn prompt_choices() -> Result<InitChoices> {
             .default(false)
             .interact()?;
 
-    let claude_md = Confirm::new()
-        .with_prompt("Add CLAUDE.md for AI assistants?")
+    let agent_instructions = Confirm::new()
+        .with_prompt("Add AGENTS.md for AI assistants?")
         .default(true)
         .interact()?;
 
@@ -467,7 +468,7 @@ fn prompt_choices() -> Result<InitChoices> {
         commit,
         linters,
         precommit,
-        claude_md,
+        agent_instructions,
     })
 }
 
@@ -580,7 +581,7 @@ mod tests {
             commit: true,
             linters: true,
             precommit: false,
-            claude_md: true,
+            agent_instructions: true,
         }
     }
 
@@ -590,7 +591,7 @@ mod tests {
             commit: false,
             linters: false,
             precommit: false,
-            claude_md: false,
+            agent_instructions: false,
         }
     }
 
@@ -632,12 +633,12 @@ mod tests {
         let target = temp_dir.path().join("target");
 
         let mut choices = no_choices();
-        choices.claude_md = true;
+        choices.agent_instructions = true;
         fs::create_dir_all(&target).unwrap();
         scaffold(&target, &choices).unwrap();
 
-        assert!(target.join("CLAUDE.md").exists());
-        assert!(!cwd_marker.join("CLAUDE.md").exists());
+        assert!(target.join("AGENTS.md").exists());
+        assert!(!cwd_marker.join("AGENTS.md").exists());
         assert!(!cwd_marker.join("queries").exists());
     }
 
@@ -655,7 +656,7 @@ mod tests {
         assert!(!target.join(".sqlfluff").exists());
         assert!(!target.join(".yamllint").exists());
         assert!(!target.join(".pre-commit-config.yaml").exists());
-        assert!(!target.join("CLAUDE.md").exists());
+        assert!(!target.join("AGENTS.md").exists());
         assert!(!target.join(".git").exists());
     }
 
@@ -671,20 +672,20 @@ mod tests {
         assert!(target.join(".sqlfluff").exists());
         assert!(target.join(".yamllint").exists());
         assert!(!target.join(".gitignore").exists());
-        assert!(!target.join("CLAUDE.md").exists());
+        assert!(!target.join("AGENTS.md").exists());
         assert!(!target.join(".pre-commit-config.yaml").exists());
     }
 
     #[test]
-    fn test_scaffold_claude_md_only() {
+    fn test_scaffold_agent_instructions_only() {
         let temp_dir = TempDir::new().unwrap();
         let target = temp_dir.path();
 
         let mut choices = no_choices();
-        choices.claude_md = true;
+        choices.agent_instructions = true;
         scaffold(target, &choices).unwrap();
 
-        assert!(target.join("CLAUDE.md").exists());
+        assert!(target.join("AGENTS.md").exists());
         assert!(!target.join(".sqlfluff").exists());
     }
 
@@ -701,7 +702,7 @@ mod tests {
             commit: false,
             linters: true,
             precommit: true,
-            claude_md: false,
+            agent_instructions: false,
         };
         scaffold(target, &choices).unwrap();
 
@@ -801,7 +802,7 @@ mod tests {
         assert!(message.contains(&target.display().to_string()));
 
         // The scaffold files were still written even though the commit failed.
-        assert!(target.join("CLAUDE.md").exists());
+        assert!(target.join("AGENTS.md").exists());
     }
 
     #[test]
@@ -880,7 +881,7 @@ mod tests {
         assert!(target.join("queries").exists());
         assert!(target.join("dashboards").exists());
         assert!(!target.join(".git").exists());
-        assert!(!target.join("CLAUDE.md").exists());
+        assert!(!target.join("AGENTS.md").exists());
     }
 
     #[test]
@@ -895,7 +896,7 @@ mod tests {
         init_impl(Some(target.clone()), || true, || Ok(all_choices())).unwrap();
 
         assert!(target.join(".git").exists());
-        assert!(target.join("CLAUDE.md").exists());
+        assert!(target.join("AGENTS.md").exists());
         assert_eq!(commit_count(&target), 1);
     }
 

@@ -11,7 +11,7 @@ This repository contains version-controlled Redash queries and dashboards manage
 
 ## Data Exploration (AI Assistants)
 
-**Setup** (first time only): Install the [mozdata-claude-plugin](https://github.com/akkomar/mozdata-claude-plugin?tab=readme-ov-file#installation) for Mozilla telemetry expertise and discovery.
+**Optional setup for Claude Code users**: Install the [mozdata Claude plugin](https://github.com/akkomar/mozdata-claude-plugin?tab=readme-ov-file#installation) for Mozilla telemetry expertise and discovery. Codex users can use these instructions and `stmo-cli` directly.
 
 **IMPORTANT**: Clean up after exploration. Archive any queries you fetch.
 
