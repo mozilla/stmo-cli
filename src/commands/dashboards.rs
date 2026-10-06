@@ -497,6 +497,13 @@ async fn deploy_single_dashboard(
     Ok(refreshed.name)
 }
 
+fn remove_local_dashboard_files(slug: &str, dashboards_dir: &Path) -> Result<()> {
+    for path in dashboard_yaml_paths_for_slug(dashboards_dir, slug)? {
+        fs::remove_file(&path).context(format!("Failed to delete {}", path.display()))?;
+    }
+    Ok(())
+}
+
 pub async fn archive(client: &RedashClient, dashboard_slugs: Vec<String>) -> Result<()> {
     if dashboard_slugs.is_empty() {
         anyhow::bail!(
@@ -513,26 +520,7 @@ pub async fn archive(client: &RedashClient, dashboard_slugs: Vec<String>) -> Res
         match client.get_dashboard(slug).await {
             Ok(dashboard) => match client.archive_dashboard(dashboard.id).await {
                 Ok(()) => {
-                    let yaml_files: Vec<_> = fs::read_dir("dashboards")
-                        .context("Failed to read dashboards directory")?
-                        .filter_map(std::result::Result::ok)
-                        .filter(|entry| {
-                            entry.path().extension().is_some_and(|ext| ext == "yaml")
-                                && entry
-                                    .file_name()
-                                    .to_str()
-                                    .and_then(|name| name.strip_suffix(".yaml"))
-                                    .and_then(|name| name.split_once('-'))
-                                    .map(|(_, file_slug)| file_slug)
-                                    .is_some_and(|file_slug| file_slug == slug)
-                        })
-                        .collect();
-
-                    for file in yaml_files {
-                        fs::remove_file(file.path())
-                            .context(format!("Failed to delete {}", file.path().display()))?;
-                    }
-
+                    remove_local_dashboard_files(slug, Path::new("dashboards"))?;
                     println!("  ✓ {} archived and local file deleted", dashboard.name);
                     success_count += 1;
                 }
@@ -1045,6 +1033,26 @@ mod tests {
 
         assert_eq!(success_count, 0);
         assert_eq!(failed_slugs, ["first", "second"]);
+    }
+
+    #[test]
+    fn remove_local_dashboard_files_only_removes_matching_slug() {
+        let temp_dir = TempDir::new().unwrap();
+        let matching_files = [
+            format!("{SAMPLE_DASHBOARD_ID}-target-dashboard.yaml"),
+            format!("{SECOND_SAMPLE_DASHBOARD_ID}-target-dashboard.yaml"),
+        ];
+        let other_file = format!("{THIRD_SAMPLE_DASHBOARD_ID}-other.yaml");
+        for file in matching_files.iter().chain(std::iter::once(&other_file)) {
+            fs::write(temp_dir.path().join(file), "test").unwrap();
+        }
+
+        remove_local_dashboard_files("target-dashboard", temp_dir.path()).unwrap();
+
+        for file in matching_files {
+            assert!(!temp_dir.path().join(file).exists());
+        }
+        assert!(temp_dir.path().join(other_file).exists());
     }
 
     #[test]
