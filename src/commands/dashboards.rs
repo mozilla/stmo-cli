@@ -11,6 +11,12 @@ use crate::models::{
     build_dashboard_level_parameter_mappings,
 };
 
+struct DashboardDeploymentTarget {
+    id: u64,
+    slug: String,
+    old_yaml_path: Option<PathBuf>,
+}
+
 fn dashboard_metadata(dashboard: &Dashboard) -> DashboardMetadata {
     DashboardMetadata {
         id: dashboard.id,
@@ -388,6 +394,56 @@ async fn deploy_dashboard_widget(
     Ok(has_params)
 }
 
+async fn prepare_dashboard_deployment(
+    client: &RedashClient,
+    dashboard_slug: &str,
+    yaml_path: &Path,
+    metadata: &DashboardMetadata,
+) -> Result<DashboardDeploymentTarget> {
+    if metadata.id == 0 {
+        let created = client
+            .create_dashboard(&CreateDashboard {
+                name: metadata.name.clone(),
+            })
+            .await?;
+        println!(
+            "  ✓ Created new dashboard: {} - {}",
+            created.id, created.name
+        );
+        client.favorite_dashboard(&created.slug).await?;
+        Ok(DashboardDeploymentTarget {
+            id: created.id,
+            slug: created.slug,
+            old_yaml_path: Some(yaml_path.to_path_buf()),
+        })
+    } else {
+        let server_dashboard = client.get_dashboard(dashboard_slug).await?;
+        let server_widget_ids: std::collections::HashSet<u64> = server_dashboard
+            .widgets
+            .iter()
+            .map(|widget| widget.id)
+            .collect();
+        let local_widget_ids: std::collections::HashSet<u64> = metadata
+            .widgets
+            .iter()
+            .filter(|widget| widget.id != 0)
+            .map(|widget| widget.id)
+            .collect();
+
+        for widget_id in &server_widget_ids {
+            if !local_widget_ids.contains(widget_id) {
+                client.delete_widget(*widget_id).await?;
+            }
+        }
+
+        Ok(DashboardDeploymentTarget {
+            id: server_dashboard.id,
+            slug: dashboard_slug.to_string(),
+            old_yaml_path: None,
+        })
+    }
+}
+
 async fn deploy_single_dashboard(
     client: &RedashClient,
     dashboard_slug: &str,
@@ -400,50 +456,19 @@ async fn deploy_single_dashboard(
     let local_metadata: DashboardMetadata =
         serde_yaml::from_str(&yaml_content).context("Failed to parse dashboard YAML")?;
 
-    let (server_dashboard_id, slug_for_refetch, old_yaml_path) = if local_metadata.id == 0 {
-        let created = client
-            .create_dashboard(&CreateDashboard {
-                name: local_metadata.name.clone(),
-            })
-            .await?;
-        println!(
-            "  ✓ Created new dashboard: {} - {}",
-            created.id, created.name
-        );
-        client.favorite_dashboard(&created.slug).await?;
-        (created.id, created.slug.clone(), Some(yaml_path.clone()))
-    } else {
-        let server_dashboard = client.get_dashboard(dashboard_slug).await?;
-
-        let server_widget_ids: std::collections::HashSet<u64> =
-            server_dashboard.widgets.iter().map(|w| w.id).collect();
-
-        let local_widget_ids: std::collections::HashSet<u64> = local_metadata
-            .widgets
-            .iter()
-            .filter(|w| w.id != 0)
-            .map(|w| w.id)
-            .collect();
-
-        for widget_id in &server_widget_ids {
-            if !local_widget_ids.contains(widget_id) {
-                client.delete_widget(*widget_id).await?;
-            }
-        }
-
-        (server_dashboard.id, dashboard_slug.to_string(), None)
-    };
+    let target =
+        prepare_dashboard_deployment(client, dashboard_slug, &yaml_path, &local_metadata).await?;
 
     let mut query_cache: HashMap<u64, Query> = HashMap::new();
     let mut any_widget_has_params = false;
 
     for widget in &local_metadata.widgets {
         any_widget_has_params |=
-            deploy_dashboard_widget(client, server_dashboard_id, widget, &mut query_cache).await?;
+            deploy_dashboard_widget(client, target.id, widget, &mut query_cache).await?;
     }
 
     let updated_dashboard = Dashboard {
-        id: server_dashboard_id,
+        id: target.id,
         name: local_metadata.name.clone(),
         slug: local_metadata.slug.clone(),
         user_id: local_metadata.user_id,
@@ -456,9 +481,9 @@ async fn deploy_single_dashboard(
 
     client.update_dashboard(&updated_dashboard).await?;
 
-    let refreshed = client.get_dashboard(&slug_for_refetch).await?;
+    let refreshed = client.get_dashboard(&target.slug).await?;
 
-    save_dashboard_yaml(&refreshed, old_yaml_path)?;
+    save_dashboard_yaml(&refreshed, target.old_yaml_path)?;
 
     Ok(refreshed.name)
 }
@@ -670,6 +695,83 @@ mod tests {
             tags: vec!["test".to_string()],
             widgets: vec![],
         }
+    }
+
+    #[tokio::test]
+    async fn prepare_dashboard_deployment_creates_and_favorites_new_dashboard() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/dashboards"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(test_dashboard_json(
+                    SAMPLE_DASHBOARD_ID,
+                    "New Dashboard",
+                    "new-dashboard",
+                    &serde_json::json!([]),
+                )),
+            )
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/dashboards/new-dashboard/favorite"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+        let temp_dir = TempDir::new().unwrap();
+        let yaml_path = temp_dir.path().join("0-new-dashboard.yaml");
+
+        let target = prepare_dashboard_deployment(
+            &test_client(&mock_server),
+            "new-dashboard",
+            &yaml_path,
+            &test_dashboard_metadata(0, "new-dashboard"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(target.id, SAMPLE_DASHBOARD_ID);
+        assert_eq!(target.slug, "new-dashboard");
+        assert_eq!(target.old_yaml_path, Some(yaml_path));
+        let requests = mock_server.received_requests().await.unwrap();
+        assert!(
+            requests
+                .iter()
+                .any(|request| { request.url.path() == "/api/dashboards/new-dashboard/favorite" })
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_dashboard_deployment_loads_existing_dashboard() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/dashboards/existing-dashboard"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(test_dashboard_json(
+                    SAMPLE_DASHBOARD_ID,
+                    "Existing Dashboard",
+                    "existing-dashboard",
+                    &serde_json::json!([]),
+                )),
+            )
+            .mount(&mock_server)
+            .await;
+        let temp_dir = TempDir::new().unwrap();
+        let yaml_path = temp_dir
+            .path()
+            .join(format!("{SAMPLE_DASHBOARD_ID}-existing-dashboard.yaml"));
+
+        let target = prepare_dashboard_deployment(
+            &test_client(&mock_server),
+            "existing-dashboard",
+            &yaml_path,
+            &test_dashboard_metadata(SAMPLE_DASHBOARD_ID, "existing-dashboard"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(target.id, SAMPLE_DASHBOARD_ID);
+        assert_eq!(target.slug, "existing-dashboard");
+        assert!(target.old_yaml_path.is_none());
     }
 
     #[test]
