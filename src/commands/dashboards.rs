@@ -50,6 +50,26 @@ fn write_dashboard_metadata(path: &Path, metadata: &DashboardMetadata) -> Result
     Ok(())
 }
 
+fn dashboard_yaml_paths_for_slug(
+    dashboards_dir: &Path,
+    dashboard_slug: &str,
+) -> Result<Vec<PathBuf>> {
+    Ok(fs::read_dir(dashboards_dir)
+        .context("Failed to read dashboards directory")?
+        .filter_map(std::result::Result::ok)
+        .filter(|entry| {
+            entry.path().extension().is_some_and(|ext| ext == "yaml")
+                && entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|name| name.strip_suffix(".yaml"))
+                    .and_then(|name| name.split_once('-'))
+                    .is_some_and(|(_, slug)| slug == dashboard_slug)
+        })
+        .map(|entry| entry.path())
+        .collect())
+}
+
 fn extract_dashboard_slugs_from_path(dashboards_dir: &Path) -> Result<Vec<String>> {
     if !dashboards_dir.exists() {
         return Ok(Vec::new());
@@ -76,26 +96,6 @@ fn extract_dashboard_slugs_from_path(dashboards_dir: &Path) -> Result<Vec<String
     dashboard_slugs.dedup();
 
     Ok(dashboard_slugs)
-}
-
-fn dashboard_yaml_paths_for_slug(
-    dashboards_dir: &Path,
-    dashboard_slug: &str,
-) -> Result<Vec<PathBuf>> {
-    Ok(fs::read_dir(dashboards_dir)
-        .context("Failed to read dashboards directory")?
-        .filter_map(std::result::Result::ok)
-        .filter(|entry| {
-            entry.path().extension().is_some_and(|ext| ext == "yaml")
-                && entry
-                    .file_name()
-                    .to_str()
-                    .and_then(|name| name.strip_suffix(".yaml"))
-                    .and_then(|name| name.split_once('-'))
-                    .is_some_and(|(_, slug)| slug == dashboard_slug)
-        })
-        .map(|entry| entry.path())
-        .collect())
 }
 
 pub async fn discover(client: &RedashClient) -> Result<()> {
@@ -196,16 +196,30 @@ pub async fn deploy(client: &RedashClient, dashboard_slugs: Vec<String>, all: bo
     report_deployment_results(success_count, &failed_slugs)
 }
 
-fn report_deployment_results(success_count: usize, failed_slugs: &[String]) -> Result<()> {
-    if failed_slugs.is_empty() {
-        println!("\n✓ All dashboards deployed successfully");
-        Ok(())
+fn dashboard_slugs_to_deploy(
+    dashboard_slugs: Vec<String>,
+    all: bool,
+    dashboards_dir: &Path,
+) -> Result<Vec<String>> {
+    if all {
+        let existing_dashboard_slugs = extract_dashboard_slugs_from_path(dashboards_dir)?;
+        if existing_dashboard_slugs.is_empty() {
+            anyhow::bail!("No dashboards found in dashboards/ directory. Use 'fetch' first.");
+        }
+        println!(
+            "Deploying {} dashboards from local directory...\n",
+            existing_dashboard_slugs.len()
+        );
+        Ok(existing_dashboard_slugs)
+    } else if !dashboard_slugs.is_empty() {
+        println!(
+            "Deploying {} specific dashboards...\n",
+            dashboard_slugs.len()
+        );
+        Ok(dashboard_slugs)
     } else {
-        println!("\n✓ {success_count} dashboard(s) deployed successfully");
         anyhow::bail!(
-            "{} dashboard(s) failed to deploy: {}",
-            failed_slugs.len(),
-            failed_slugs.join(", ")
+            "No dashboard slugs specified. Use --all to deploy all tracked dashboards, or provide specific slugs.\n\nExamples:\n  stmo-cli dashboards deploy --all\n  stmo-cli dashboards deploy firefox-desktop-on-steamos bug-2006698---ccov-build-regression"
         );
     }
 }
@@ -234,30 +248,16 @@ async fn deploy_dashboards(
     (success_count, failed_slugs)
 }
 
-fn dashboard_slugs_to_deploy(
-    dashboard_slugs: Vec<String>,
-    all: bool,
-    dashboards_dir: &Path,
-) -> Result<Vec<String>> {
-    if all {
-        let existing_dashboard_slugs = extract_dashboard_slugs_from_path(dashboards_dir)?;
-        if existing_dashboard_slugs.is_empty() {
-            anyhow::bail!("No dashboards found in dashboards/ directory. Use 'fetch' first.");
-        }
-        println!(
-            "Deploying {} dashboards from local directory...\n",
-            existing_dashboard_slugs.len()
-        );
-        Ok(existing_dashboard_slugs)
-    } else if !dashboard_slugs.is_empty() {
-        println!(
-            "Deploying {} specific dashboards...\n",
-            dashboard_slugs.len()
-        );
-        Ok(dashboard_slugs)
+fn report_deployment_results(success_count: usize, failed_slugs: &[String]) -> Result<()> {
+    if failed_slugs.is_empty() {
+        println!("\n✓ All dashboards deployed successfully");
+        Ok(())
     } else {
+        println!("\n✓ {success_count} dashboard(s) deployed successfully");
         anyhow::bail!(
-            "No dashboard slugs specified. Use --all to deploy all tracked dashboards, or provide specific slugs.\n\nExamples:\n  stmo-cli dashboards deploy --all\n  stmo-cli dashboards deploy firefox-desktop-on-steamos bug-2006698---ccov-build-regression"
+            "{} dashboard(s) failed to deploy: {}",
+            failed_slugs.len(),
+            failed_slugs.join(", ")
         );
     }
 }
@@ -497,13 +497,6 @@ async fn deploy_single_dashboard(
     Ok(refreshed.name)
 }
 
-fn remove_local_dashboard_files(slug: &str, dashboards_dir: &Path) -> Result<()> {
-    for path in dashboard_yaml_paths_for_slug(dashboards_dir, slug)? {
-        fs::remove_file(&path).context(format!("Failed to delete {}", path.display()))?;
-    }
-    Ok(())
-}
-
 pub async fn archive(client: &RedashClient, dashboard_slugs: Vec<String>) -> Result<()> {
     if dashboard_slugs.is_empty() {
         anyhow::bail!(
@@ -547,6 +540,13 @@ pub async fn archive(client: &RedashClient, dashboard_slugs: Vec<String>) -> Res
             failed_slugs.join(", ")
         );
     }
+}
+
+fn remove_local_dashboard_files(slug: &str, dashboards_dir: &Path) -> Result<()> {
+    for path in dashboard_yaml_paths_for_slug(dashboards_dir, slug)? {
+        fs::remove_file(&path).context(format!("Failed to delete {}", path.display()))?;
+    }
+    Ok(())
 }
 
 pub async fn unarchive(client: &RedashClient, dashboard_slugs: Vec<String>) -> Result<()> {
@@ -604,6 +604,41 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    const SAMPLE_DASHBOARD_ID: u64 = 9_000_000_001;
+    const SECOND_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_002;
+    const THIRD_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_003;
+    const FOURTH_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_004;
+    const SAMPLE_USER_ID: u64 = 9_600_000_001;
+    const SAMPLE_WIDGET_ID: u64 = 9_100_000_001;
+    const CREATED_WIDGET_ID: u64 = 9_100_000_002;
+    const SAMPLE_VISUALIZATION_ID: u64 = 9_300_000_001;
+
+    fn test_dashboard_metadata(id: u64, slug: &str) -> DashboardMetadata {
+        DashboardMetadata {
+            id,
+            name: "Test Dashboard".to_string(),
+            slug: slug.to_string(),
+            user_id: SAMPLE_USER_ID,
+            is_draft: false,
+            is_archived: false,
+            filters_enabled: false,
+            tags: vec!["test".to_string()],
+            widgets: vec![],
+        }
+    }
+
+    fn test_widget_metadata(id: u64, visualization_id: Option<u64>) -> WidgetMetadata {
+        WidgetMetadata {
+            id,
+            width: 1,
+            visualization_id,
+            query_id: None,
+            visualization_name: None,
+            text: String::new(),
+            options: test_create_widget(0).options,
+        }
+    }
+
     fn test_dashboard_json(
         id: u64,
         name: &str,
@@ -622,19 +657,6 @@ mod tests {
             "widgets": widgets
         })
     }
-
-    fn test_client(mock_server: &MockServer) -> RedashClient {
-        RedashClient::new(mock_server.uri(), "test-key").unwrap()
-    }
-
-    const SAMPLE_DASHBOARD_ID: u64 = 9_000_000_001;
-    const SECOND_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_002;
-    const THIRD_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_003;
-    const FOURTH_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_004;
-    const SAMPLE_USER_ID: u64 = 9_600_000_001;
-    const SAMPLE_WIDGET_ID: u64 = 9_100_000_001;
-    const CREATED_WIDGET_ID: u64 = 9_100_000_002;
-    const SAMPLE_VISUALIZATION_ID: u64 = 9_300_000_001;
 
     fn test_widget_json(id: u64, dashboard_id: u64) -> serde_json::Value {
         serde_json::json!({
@@ -668,30 +690,267 @@ mod tests {
         }
     }
 
-    fn test_widget_metadata(id: u64, visualization_id: Option<u64>) -> WidgetMetadata {
-        WidgetMetadata {
-            id,
-            width: 1,
-            visualization_id,
-            query_id: None,
-            visualization_name: None,
-            text: String::new(),
-            options: test_create_widget(0).options,
-        }
+    fn test_client(mock_server: &MockServer) -> RedashClient {
+        RedashClient::new(mock_server.uri(), "test-key").unwrap()
     }
 
-    fn test_dashboard_metadata(id: u64, slug: &str) -> DashboardMetadata {
-        DashboardMetadata {
-            id,
-            name: "Test Dashboard".to_string(),
-            slug: slug.to_string(),
-            user_id: SAMPLE_USER_ID,
-            is_draft: false,
-            is_archived: false,
-            filters_enabled: false,
-            tags: vec!["test".to_string()],
-            widgets: vec![],
+    #[test]
+    fn dashboard_metadata_copies_server_widget_metadata() {
+        let dashboard = serde_json::from_value::<Dashboard>(serde_json::json!({
+            "id": SAMPLE_DASHBOARD_ID,
+            "name": "Test Dashboard",
+            "slug": "test-dashboard",
+            "user_id": SAMPLE_USER_ID,
+            "is_archived": false,
+            "is_draft": false,
+            "dashboard_filters_enabled": false,
+            "tags": ["test"],
+            "widgets": [{
+                "id": 7,
+                "dashboard_id": SAMPLE_DASHBOARD_ID,
+                "width": 2,
+                "visualization_id": 8,
+                "visualization": {
+                    "id": 8,
+                    "name": "Chart",
+                    "query": {"id": 9, "name": "Query"}
+                },
+                "text": "caption",
+                "options": {
+                    "position": {"col": 1, "row": 2, "sizeX": 3, "sizeY": 4}
+                }
+            }]
+        }))
+        .unwrap();
+
+        let metadata = dashboard_metadata(&dashboard);
+        assert_eq!(metadata.id, SAMPLE_DASHBOARD_ID);
+        assert_eq!(metadata.widgets.len(), 1);
+        assert_eq!(metadata.widgets[0].query_id, Some(9));
+        assert_eq!(
+            metadata.widgets[0].visualization_name.as_deref(),
+            Some("Chart")
+        );
+        assert_eq!(metadata.widgets[0].options.position.col, 1);
+    }
+
+    #[test]
+    fn write_dashboard_metadata_creates_readable_yaml() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("dashboard.yaml");
+        let metadata = test_dashboard_metadata(SAMPLE_DASHBOARD_ID, "test-dashboard");
+
+        write_dashboard_metadata(&path, &metadata).unwrap();
+
+        let saved: DashboardMetadata =
+            serde_yaml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(saved.id, SAMPLE_DASHBOARD_ID);
+        assert_eq!(saved.slug, "test-dashboard");
+        assert_eq!(saved.tags, ["test"]);
+    }
+
+    #[test]
+    fn dashboard_yaml_paths_for_slug_filters_by_complete_slug() {
+        let temp_dir = TempDir::new().unwrap();
+        let slug = "sample-dashboard";
+        let files = [
+            format!("{SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
+            format!("{SECOND_SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
+            format!("{THIRD_SAMPLE_DASHBOARD_ID}-other-dashboard.yaml"),
+            format!("{FOURTH_SAMPLE_DASHBOARD_ID}-{slug}.txt"),
+        ];
+        for file in &files {
+            fs::write(temp_dir.path().join(file), "test").unwrap();
         }
+
+        let paths = dashboard_yaml_paths_for_slug(temp_dir.path(), slug).unwrap();
+        let mut filenames: Vec<_> = paths
+            .iter()
+            .map(|path| path.file_name().unwrap().to_str().unwrap())
+            .collect();
+        filenames.sort_unstable();
+        let expected_filenames = [
+            format!("{SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
+            format!("{SECOND_SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
+        ];
+        assert_eq!(
+            filenames,
+            expected_filenames
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_dashboard_to_file_writes_the_downloaded_dashboard() {
+        let mock_server = MockServer::start().await;
+        let dashboards_dir = TempDir::new().unwrap();
+        Mock::given(method("GET"))
+            .and(path("/api/dashboards/test-dashboard"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(test_dashboard_json(
+                    SAMPLE_DASHBOARD_ID,
+                    "Test Dashboard",
+                    "test-dashboard",
+                    &serde_json::json!([]),
+                )),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let dashboard = fetch_dashboard_to_file(
+            &test_client(&mock_server),
+            "test-dashboard",
+            dashboards_dir.path(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(dashboard.id, SAMPLE_DASHBOARD_ID);
+        let saved: DashboardMetadata = serde_yaml::from_str(
+            &fs::read_to_string(
+                dashboards_dir
+                    .path()
+                    .join(format!("{SAMPLE_DASHBOARD_ID}-test-dashboard.yaml")),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved.name, "Test Dashboard");
+    }
+
+    #[test]
+    fn dashboard_slugs_to_deploy_selects_explicit_or_tracked_slugs() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir
+                .path()
+                .join(format!("{SECOND_SAMPLE_DASHBOARD_ID}-zebra.yaml")),
+            "test",
+        )
+        .unwrap();
+        fs::write(
+            temp_dir
+                .path()
+                .join(format!("{SAMPLE_DASHBOARD_ID}-alpha.yaml")),
+            "test",
+        )
+        .unwrap();
+
+        assert_eq!(
+            dashboard_slugs_to_deploy(vec!["chosen-dashboard".to_string()], false, temp_dir.path())
+                .unwrap(),
+            ["chosen-dashboard"]
+        );
+        assert_eq!(
+            dashboard_slugs_to_deploy(vec![], true, temp_dir.path()).unwrap(),
+            ["alpha", "zebra"]
+        );
+        assert!(dashboard_slugs_to_deploy(vec![], false, temp_dir.path()).is_err());
+
+        let empty_dir = TempDir::new().unwrap();
+        assert!(dashboard_slugs_to_deploy(vec![], true, empty_dir.path()).is_err());
+    }
+
+    #[tokio::test]
+    async fn deploy_dashboards_collects_per_dashboard_failures() {
+        let mock_server = MockServer::start().await;
+        let dashboards_dir = TempDir::new().unwrap();
+        fs::write(
+            dashboards_dir
+                .path()
+                .join(format!("{THIRD_SAMPLE_DASHBOARD_ID}-first.yaml")),
+            "widgets: [",
+        )
+        .unwrap();
+        fs::write(
+            dashboards_dir
+                .path()
+                .join(format!("{FOURTH_SAMPLE_DASHBOARD_ID}-second.yaml")),
+            "widgets: [",
+        )
+        .unwrap();
+
+        let (success_count, failed_slugs) = deploy_dashboards(
+            &test_client(&mock_server),
+            &["first".to_string(), "second".to_string()],
+            dashboards_dir.path(),
+        )
+        .await;
+
+        assert_eq!(success_count, 0);
+        assert_eq!(failed_slugs, ["first", "second"]);
+    }
+
+    #[test]
+    fn report_deployment_results_returns_success_or_failure() {
+        assert!(report_deployment_results(2, &[]).is_ok());
+        let error = report_deployment_results(1, &["failed-dashboard".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("1 dashboard(s) failed to deploy"));
+        assert!(error.contains("failed-dashboard"));
+    }
+
+    #[tokio::test]
+    async fn deploy_dashboard_widget_creates_new_widget() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/widgets"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(test_widget_json(CREATED_WIDGET_ID, SAMPLE_DASHBOARD_ID)),
+            )
+            .mount(&mock_server)
+            .await;
+        let widget = test_widget_metadata(0, Some(SAMPLE_VISUALIZATION_ID));
+
+        let has_params = deploy_dashboard_widget(
+            &test_client(&mock_server),
+            SAMPLE_DASHBOARD_ID,
+            &widget,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap();
+
+        assert!(!has_params);
+        let requests = mock_server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(body["dashboard_id"], SAMPLE_DASHBOARD_ID);
+        assert_eq!(body["visualization_id"], SAMPLE_VISUALIZATION_ID);
+    }
+
+    #[tokio::test]
+    async fn deploy_dashboard_widget_updates_existing_widget() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!("/api/widgets/{SAMPLE_WIDGET_ID}")))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(test_widget_json(SAMPLE_WIDGET_ID, SAMPLE_DASHBOARD_ID)),
+            )
+            .mount(&mock_server)
+            .await;
+        let widget = test_widget_metadata(SAMPLE_WIDGET_ID, Some(SAMPLE_VISUALIZATION_ID));
+
+        let has_params = deploy_dashboard_widget(
+            &test_client(&mock_server),
+            SAMPLE_DASHBOARD_ID,
+            &widget,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap();
+
+        assert!(!has_params);
+        let requests = mock_server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0].url.path(),
+            format!("/api/widgets/{SAMPLE_WIDGET_ID}")
+        );
     }
 
     #[tokio::test]
@@ -804,238 +1063,6 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_metadata_copies_server_widget_metadata() {
-        let dashboard = serde_json::from_value::<Dashboard>(serde_json::json!({
-            "id": SAMPLE_DASHBOARD_ID,
-            "name": "Test Dashboard",
-            "slug": "test-dashboard",
-            "user_id": SAMPLE_USER_ID,
-            "is_archived": false,
-            "is_draft": false,
-            "dashboard_filters_enabled": false,
-            "tags": ["test"],
-            "widgets": [{
-                "id": 7,
-                "dashboard_id": SAMPLE_DASHBOARD_ID,
-                "width": 2,
-                "visualization_id": 8,
-                "visualization": {
-                    "id": 8,
-                    "name": "Chart",
-                    "query": {"id": 9, "name": "Query"}
-                },
-                "text": "caption",
-                "options": {
-                    "position": {"col": 1, "row": 2, "sizeX": 3, "sizeY": 4}
-                }
-            }]
-        }))
-        .unwrap();
-
-        let metadata = dashboard_metadata(&dashboard);
-        assert_eq!(metadata.id, SAMPLE_DASHBOARD_ID);
-        assert_eq!(metadata.widgets.len(), 1);
-        assert_eq!(metadata.widgets[0].query_id, Some(9));
-        assert_eq!(
-            metadata.widgets[0].visualization_name.as_deref(),
-            Some("Chart")
-        );
-        assert_eq!(metadata.widgets[0].options.position.col, 1);
-    }
-
-    #[test]
-    fn write_dashboard_metadata_creates_readable_yaml() {
-        let temp_dir = TempDir::new().unwrap();
-        let path = temp_dir.path().join("dashboard.yaml");
-        let metadata = test_dashboard_metadata(SAMPLE_DASHBOARD_ID, "test-dashboard");
-
-        write_dashboard_metadata(&path, &metadata).unwrap();
-
-        let saved: DashboardMetadata =
-            serde_yaml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
-        assert_eq!(saved.id, SAMPLE_DASHBOARD_ID);
-        assert_eq!(saved.slug, "test-dashboard");
-        assert_eq!(saved.tags, ["test"]);
-    }
-
-    #[test]
-    fn dashboard_yaml_paths_for_slug_filters_by_complete_slug() {
-        let temp_dir = TempDir::new().unwrap();
-        let slug = "sample-dashboard";
-        let files = [
-            format!("{SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
-            format!("{SECOND_SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
-            format!("{THIRD_SAMPLE_DASHBOARD_ID}-other-dashboard.yaml"),
-            format!("{FOURTH_SAMPLE_DASHBOARD_ID}-{slug}.txt"),
-        ];
-        for file in &files {
-            fs::write(temp_dir.path().join(file), "test").unwrap();
-        }
-
-        let paths = dashboard_yaml_paths_for_slug(temp_dir.path(), slug).unwrap();
-        let mut filenames: Vec<_> = paths
-            .iter()
-            .map(|path| path.file_name().unwrap().to_str().unwrap())
-            .collect();
-        filenames.sort_unstable();
-        let expected_filenames = [
-            format!("{SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
-            format!("{SECOND_SAMPLE_DASHBOARD_ID}-{slug}.yaml"),
-        ];
-        assert_eq!(
-            filenames,
-            expected_filenames
-                .iter()
-                .map(String::as_str)
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[tokio::test]
-    async fn fetch_dashboard_to_file_writes_the_downloaded_dashboard() {
-        let mock_server = MockServer::start().await;
-        let dashboards_dir = TempDir::new().unwrap();
-        Mock::given(method("GET"))
-            .and(path("/api/dashboards/test-dashboard"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(test_dashboard_json(
-                    42,
-                    "Test Dashboard",
-                    "test-dashboard",
-                    &serde_json::json!([]),
-                )),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let dashboard = fetch_dashboard_to_file(
-            &test_client(&mock_server),
-            "test-dashboard",
-            dashboards_dir.path(),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(dashboard.id, 42);
-        let saved: DashboardMetadata = serde_yaml::from_str(
-            &fs::read_to_string(dashboards_dir.path().join("42-test-dashboard.yaml")).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(saved.name, "Test Dashboard");
-    }
-
-    #[test]
-    fn dashboard_slugs_to_deploy_selects_explicit_or_tracked_slugs() {
-        let temp_dir = TempDir::new().unwrap();
-        fs::write(
-            temp_dir
-                .path()
-                .join(format!("{SECOND_SAMPLE_DASHBOARD_ID}-zebra.yaml")),
-            "test",
-        )
-        .unwrap();
-        fs::write(
-            temp_dir
-                .path()
-                .join(format!("{SAMPLE_DASHBOARD_ID}-alpha.yaml")),
-            "test",
-        )
-        .unwrap();
-
-        assert_eq!(
-            dashboard_slugs_to_deploy(vec!["chosen-dashboard".to_string()], false, temp_dir.path())
-                .unwrap(),
-            ["chosen-dashboard"]
-        );
-        assert_eq!(
-            dashboard_slugs_to_deploy(vec![], true, temp_dir.path()).unwrap(),
-            ["alpha", "zebra"]
-        );
-        assert!(dashboard_slugs_to_deploy(vec![], false, temp_dir.path()).is_err());
-
-        let empty_dir = TempDir::new().unwrap();
-        assert!(dashboard_slugs_to_deploy(vec![], true, empty_dir.path()).is_err());
-    }
-
-    #[tokio::test]
-    async fn deploy_dashboard_widget_creates_new_widget() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/api/widgets"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(test_widget_json(CREATED_WIDGET_ID, SAMPLE_DASHBOARD_ID)),
-            )
-            .mount(&mock_server)
-            .await;
-        let widget = test_widget_metadata(0, Some(SAMPLE_VISUALIZATION_ID));
-
-        let has_params = deploy_dashboard_widget(
-            &test_client(&mock_server),
-            SAMPLE_DASHBOARD_ID,
-            &widget,
-            &mut HashMap::new(),
-        )
-        .await
-        .unwrap();
-
-        assert!(!has_params);
-        let requests = mock_server.received_requests().await.unwrap();
-        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
-        assert_eq!(body["dashboard_id"], SAMPLE_DASHBOARD_ID);
-        assert_eq!(body["visualization_id"], SAMPLE_VISUALIZATION_ID);
-    }
-
-    #[tokio::test]
-    async fn deploy_dashboard_widget_updates_existing_widget() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path(format!("/api/widgets/{SAMPLE_WIDGET_ID}")))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(test_widget_json(SAMPLE_WIDGET_ID, SAMPLE_DASHBOARD_ID)),
-            )
-            .mount(&mock_server)
-            .await;
-        let widget = test_widget_metadata(SAMPLE_WIDGET_ID, Some(SAMPLE_VISUALIZATION_ID));
-
-        let has_params = deploy_dashboard_widget(
-            &test_client(&mock_server),
-            SAMPLE_DASHBOARD_ID,
-            &widget,
-            &mut HashMap::new(),
-        )
-        .await
-        .unwrap();
-
-        assert!(!has_params);
-        let requests = mock_server.received_requests().await.unwrap();
-        assert_eq!(requests.len(), 1);
-        assert_eq!(
-            requests[0].url.path(),
-            format!("/api/widgets/{SAMPLE_WIDGET_ID}")
-        );
-    }
-
-    #[tokio::test]
-    async fn deploy_dashboards_collects_per_dashboard_failures() {
-        let mock_server = MockServer::start().await;
-        let dashboards_dir = TempDir::new().unwrap();
-        fs::write(dashboards_dir.path().join("1-first.yaml"), "widgets: [").unwrap();
-        fs::write(dashboards_dir.path().join("2-second.yaml"), "widgets: [").unwrap();
-
-        let (success_count, failed_slugs) = deploy_dashboards(
-            &test_client(&mock_server),
-            &["first".to_string(), "second".to_string()],
-            dashboards_dir.path(),
-        )
-        .await;
-
-        assert_eq!(success_count, 0);
-        assert_eq!(failed_slugs, ["first", "second"]);
-    }
-
-    #[test]
     fn remove_local_dashboard_files_only_removes_matching_slug() {
         let temp_dir = TempDir::new().unwrap();
         let matching_files = [
@@ -1053,16 +1080,6 @@ mod tests {
             assert!(!temp_dir.path().join(file).exists());
         }
         assert!(temp_dir.path().join(other_file).exists());
-    }
-
-    #[test]
-    fn report_deployment_results_returns_success_or_failure() {
-        assert!(report_deployment_results(2, &[]).is_ok());
-        let error = report_deployment_results(1, &["failed-dashboard".to_string()])
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("1 dashboard(s) failed to deploy"));
-        assert!(error.contains("failed-dashboard"));
     }
 
     #[test]
