@@ -1,7 +1,7 @@
 ---
 name: update-stmo-skill
 description: >
-  Sync the vendored stmo Claude skill (.claude/skills/stmo/SKILL.md) with a
+  Sync the canonical stmo skill (.agents/skills/stmo/SKILL.md) with a
   stmo-cli change and prepare delivery to the mozilla-firefox/firefox repo via
   moz-phab. Use after a stmo-cli change (new command, flag, or workflow
   behavior) that the firefox-facing skill should reflect, or as part of
@@ -19,7 +19,7 @@ allowed-tools:
 
 # update-stmo-skill
 
-Keeps `.claude/skills/stmo/SKILL.md` (the vendored copy, source of truth for
+Keeps `.agents/skills/stmo/SKILL.md` (the canonical copy, source of truth for
 the firefox-facing skill) in sync with stmo-cli, then hands off delivery to a
 firefox checkout.
 
@@ -50,7 +50,7 @@ shipped).
    - Flag/command surface change only → run `cargo test llm_help_guard` (or
      the full `cargo test`) to confirm `LLM_HELP` in `src/main.rs` already
      covers it. If the guard fails, fix `LLM_HELP`, not `SKILL.md`.
-   - Workflow/behavior change → edit `.claude/skills/stmo/SKILL.md` directly.
+   - Workflow/behavior change → edit `.agents/skills/stmo/SKILL.md` directly.
      Keep edits narrative (what to do and why), not a restatement of flags —
      let `--help` stay the source of truth for those.
 
@@ -65,7 +65,7 @@ shipped).
    ```bash
    scripts/sync-firefox-skill.sh <path-to-local-firefox-checkout> [bug-number]
    ```
-   This copies the vendored `SKILL.md` to both `.claude/skills/stmo/SKILL.md`
+   This copies the canonical `SKILL.md` to both `.claude/skills/stmo/SKILL.md`
    and `.agents/skills/stmo/SKILL.md` in the firefox checkout (firefox's
    `agent-skills-sync` linter requires the two to stay byte-identical), stages
    both, and creates one commit. It does **not** run `moz-phab` — it prints

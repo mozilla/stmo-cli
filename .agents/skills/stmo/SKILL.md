@@ -23,9 +23,9 @@ CLI for managing queries and dashboards on Mozilla's Redash instance (sql.teleme
 
 Before anything else, run `stmo-cli --help`. It prints LLM-optimized, version-matched
 output — every command, flag, required YAML field, the slug-derivation rule, enum/date
-syntax gotchas, and dynamic date tokens — automatically inside this environment
-(`CLAUDECODE` is set). Treat that output as the source of truth for the command surface;
-the sections below are workflow guidance it doesn't cover.
+syntax gotchas, and dynamic date tokens — automatically when an AI coding assistant is
+detected. Treat that output as the source of truth for the command surface; the
+sections below are workflow guidance it doesn't cover.
 
 ## Prerequisites
 

@@ -1,6 +1,6 @@
 # stmo-cli
 
-Redash CLI that gives Claude Code direct access to sql.telemetry.mozilla.org — explore data sources, write and run queries, and deploy dashboards.
+Redash CLI that gives AI coding assistants direct access to sql.telemetry.mozilla.org — explore data sources, write and run queries, and deploy dashboards.
 
 ## Quick Reference
 
@@ -141,7 +141,16 @@ returning `()` (no body) or needing retries use `ensure_success` / `get_with_ret
 
 4. **STMO may differ from upstream** - Mozilla's instance may have endpoints disabled or behave differently than Redash documentation suggests.
 
+## Agent Workflow Guides
+
+Workflow guides are maintained in `.agents/skills/`. When a task matches one of
+these guides, read its `SKILL.md` and follow it:
+
+- `stmo`: work with telemetry queries and dashboards
+- `release`: prepare and publish an stmo-cli release
+- `update-stmo-skill`: sync the CLI guidance to the Firefox repository
+
 ## Releasing
 
-See the `release` skill (`.claude/skills/release/SKILL.md`) for the full changelog,
+See the `release` skill (`.agents/skills/release/SKILL.md`) for the full changelog,
 versioning, tagging, and publish flow.

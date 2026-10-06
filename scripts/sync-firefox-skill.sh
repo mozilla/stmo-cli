@@ -17,10 +17,10 @@ bug_number="${2:-}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
-src="$repo_root/.claude/skills/stmo/SKILL.md"
+src="$repo_root/.agents/skills/stmo/SKILL.md"
 
 if [[ ! -f "$src" ]]; then
-    echo "error: vendored skill not found at $src" >&2
+    echo "error: canonical skill not found at $src" >&2
     exit 1
 fi
 
@@ -68,7 +68,7 @@ repo_sha="$(git -C "$repo_root" rev-parse HEAD)"
 permalink=""
 if git -C "$repo_root" fetch --quiet https://github.com/mozilla/stmo-cli.git main 2>/dev/null \
     && git -C "$repo_root" merge-base --is-ancestor "$repo_sha" FETCH_HEAD 2>/dev/null; then
-    permalink="https://github.com/mozilla/stmo-cli/blob/$repo_sha/.claude/skills/stmo/SKILL.md"
+    permalink="https://github.com/mozilla/stmo-cli/blob/$repo_sha/.agents/skills/stmo/SKILL.md"
 else
     echo "warning: $repo_sha is not on mozilla/stmo-cli main yet — omitting the source permalink from the test plan. Merge to main first, then re-run to get one." >&2
 fi

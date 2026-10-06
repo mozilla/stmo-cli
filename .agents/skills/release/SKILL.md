@@ -54,7 +54,7 @@ tagging (step 3) is a manual, human-only step for the same reason.
 2. `cargo xtask cut-release X.Y.Z` — pushes `release-X.Y.Z` to `origin` and
    opens a **draft** PR against `mozilla/stmo-cli` `main`. Review and merge
    it.
-3. **You run this step, not Claude/the skill.** After the PR merges, sync
+3. **You run this step, not the assistant or skill.** After the PR merges, sync
    `main` and cut the signed tag yourself:
    ```
    git checkout main && git fetch upstream && git reset --hard upstream/main
@@ -63,7 +63,7 @@ tagging (step 3) is a manual, human-only step for the same reason.
    ```
    Two separate hard blockers, not a style choice:
    - **Signing** needs your GPG key and an interactive passphrase/pinentry
-     prompt — Claude has no way to answer that prompt.
+     prompt — enter the passphrase yourself.
    - **Pushing to `upstream`** is refused outright by the local
      `check_push_target.py` safety hook, which blocks any push to a
      non-fork remote — tag or branch — regardless of who's asking.
@@ -80,8 +80,8 @@ tagging (step 3) is a manual, human-only step for the same reason.
    to update both `mozilla-firefox/firefox/.claude/skills/stmo/SKILL.md` and
    `mozilla-firefox/firefox/.agents/skills/stmo/SKILL.md` (firefox mirrors
    the two and enforces they match via its `agent-skills-sync` linter) and
-   prepare a moz-phab submission. See `.claude/skills/stmo/SKILL.md`
-   (vendored canonical copy) and `.claude/skills/update-stmo-skill/SKILL.md`.
+   prepare a moz-phab submission. See `.agents/skills/stmo/SKILL.md` and
+   `.agents/skills/update-stmo-skill/SKILL.md`.
 
 ## Why crates.io publish isn't in CI
 
