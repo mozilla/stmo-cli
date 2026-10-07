@@ -19,3 +19,8 @@ repos:
     language: system
     types: [rust]
     pass_filenames: false
+  - id: synthetic-stmo-data
+    name: Check for production-derived STMO data
+    entry: python3 scripts/check_synthetic_fixtures.py
+    language: system
+    pass_filenames: false

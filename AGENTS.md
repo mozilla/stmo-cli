@@ -94,6 +94,11 @@ fn test_something() {
 
 For integration tests needing current directory context, use mutex + TempWorkDir pattern (see `tests/dashboard_commands.rs`).
 
+### Synthetic STMO Data
+Never copy records, identifiers, names, slugs, snippets, or SQL from live STMO into source code, tests, documentation, or generated templates. Create minimal hand-written examples with fictional values. Use resource IDs in the reserved `900_000_000`–`1_999_999_999` range for fixtures; `0` remains the new-resource sentinel. Use `.invalid` addresses for example users and placeholders for IDs in command examples. The source guard cannot determine the origin of arbitrary SQL or names, so review their provenance as well.
+
+Run `python3 scripts/check_synthetic_fixtures.py` locally. Pre-commit and CI enforce the same guard.
+
 ### API Error Handling
 Route every response through the `ensure_success` helper in `api.rs`. It returns the
 response on success and bails with a uniform `API error {status}: {body}` message
