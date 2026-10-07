@@ -537,11 +537,11 @@ mod tests {
     #[test]
     fn test_query_serialization() {
         let query = Query {
-            id: 1,
+            id: 1_200_000_001,
             name: "Test Query".to_string(),
             description: None,
             sql: "SELECT * FROM table".to_string(),
-            data_source_id: 63,
+            data_source_id: 1_500_000_001,
             user: None,
             schedule: None,
             options: QueryOptions { parameters: vec![] },
@@ -561,88 +561,85 @@ mod tests {
     #[test]
     fn test_query_metadata_deserialization() {
         let yaml = r"
-id: 100064
+id: 1200000001
 name: Test Query
 description: null
-data_source_id: 63
-user_id: 530
+data_source_id: 1500000001
+user_id: 1600000001
 schedule: null
 options:
   parameters:
-    - name: project
-      title: project
+    - name: category
+      title: category
       type: enum
       value:
-        - try
+        - example-a
       enumOptions: |
-        try
-        autoland
+        example-a
+        example-b
 visualizations: []
 tags:
-  - bug 1840828
+  - example-tag
 ";
 
         let metadata: QueryMetadata = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(metadata.id, 100_064);
+        assert_eq!(metadata.id, 1_200_000_001);
         assert_eq!(metadata.name, "Test Query");
-        assert_eq!(metadata.data_source_id, 63);
+        assert_eq!(metadata.data_source_id, 1_500_000_001);
         assert_eq!(metadata.options.parameters.len(), 1);
-        assert_eq!(metadata.options.parameters[0].name, "project");
+        assert_eq!(metadata.options.parameters[0].name, "category");
     }
 
     #[test]
     fn test_query_snippet_deserialization() {
         let json = r#"{
-            "id": 31,
-            "trigger": "reviewbot_e2e_action_ctcs",
-            "description": "Action-task gap compression CTEs",
-            "snippet": "action_tasks AS (\n    SELECT 1\n)",
+            "id": 1700000001,
+            "trigger": "example_snippet",
+            "description": "Example SQL snippet",
+            "snippet": "sample_tasks AS (\n    SELECT 1\n)",
             "user": {
-                "id": 530,
-                "name": "jlorenzo@mozilla.com",
-                "email": "jlorenzo@mozilla.com"
+                "id": 1600000001,
+                "name": "Example User",
+                "email": "fixture@example.invalid"
             },
-            "updated_at": "2026-06-24T09:13:26.873Z",
-            "created_at": "2026-06-24T09:13:26.873Z"
+            "updated_at": "2026-01-21T10:00:00Z",
+            "created_at": "2026-01-21T10:00:00Z"
         }"#;
 
         let snippet: QuerySnippet = serde_json::from_str(json).unwrap();
-        assert_eq!(snippet.id, 31);
-        assert_eq!(snippet.trigger, "reviewbot_e2e_action_ctcs");
-        assert_eq!(
-            snippet.description,
-            Some("Action-task gap compression CTEs".to_string())
-        );
-        assert!(snippet.snippet.contains("action_tasks AS"));
-        assert_eq!(snippet.user.unwrap().email, "jlorenzo@mozilla.com");
+        assert_eq!(snippet.id, 1_700_000_001);
+        assert_eq!(snippet.trigger, "example_snippet");
+        assert_eq!(snippet.description, Some("Example SQL snippet".to_string()));
+        assert!(snippet.snippet.contains("sample_tasks AS"));
+        assert_eq!(snippet.user.unwrap().email, "fixture@example.invalid");
     }
 
     #[test]
     fn test_query_snippet_missing_user_deserialization() {
         let json = r#"{
-            "id": 12,
-            "trigger": "days_ago",
+            "id": 1700000002,
+            "trigger": "example_date_filter",
             "description": "",
-            "snippet": "(CURRENT_DATE - INTERVAL '$1' DAY)",
-            "updated_at": "2018-04-05T19:36:28.831Z",
-            "created_at": "2018-04-05T19:09:55.265Z"
+            "snippet": "SELECT 1",
+            "updated_at": "2026-01-21T10:00:00Z",
+            "created_at": "2026-01-21T10:00:00Z"
         }"#;
 
         let snippet: QuerySnippet = serde_json::from_str(json).unwrap();
-        assert_eq!(snippet.id, 12);
+        assert_eq!(snippet.id, 1_700_000_002);
         assert!(snippet.user.is_none());
     }
 
     #[test]
     fn test_create_query_snippet_serialization() {
         let create = CreateQuerySnippet {
-            trigger: "reviewbot_push_duration".to_string(),
-            description: Some("Corrected push duration formula".to_string()),
+            trigger: "example_push_duration".to_string(),
+            description: Some("Example duration formula".to_string()),
             snippet: "TIMESTAMP_DIFF(a, b, SECOND)".to_string(),
         };
 
         let json = serde_json::to_string(&create).unwrap();
-        assert!(json.contains("\"trigger\":\"reviewbot_push_duration\""));
+        assert!(json.contains("\"trigger\":\"example_push_duration\""));
         assert!(json.contains("\"snippet\":\"TIMESTAMP_DIFF(a, b, SECOND)\""));
         assert!(!json.contains("\"id\""));
     }
@@ -662,17 +659,17 @@ tags:
     #[test]
     fn test_snippet_metadata_yaml_roundtrip() {
         let yaml = r"
-id: 31
-trigger: reviewbot_e2e_action_ctcs
-description: Action-task gap compression CTEs
+id: 1700000001
+trigger: example_snippet
+description: Example SQL snippet
 ";
 
         let metadata: SnippetMetadata = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(metadata.id, 31);
-        assert_eq!(metadata.trigger, "reviewbot_e2e_action_ctcs");
+        assert_eq!(metadata.id, 1_700_000_001);
+        assert_eq!(metadata.trigger, "example_snippet");
         assert_eq!(
             metadata.description,
-            Some("Action-task gap compression CTEs".to_string())
+            Some("Example SQL snippet".to_string())
         );
 
         let reserialized = serde_yaml::to_string(&metadata).unwrap();
@@ -684,7 +681,7 @@ description: Action-task gap compression CTEs
     #[test]
     fn test_datasource_deserialization() {
         let json = r#"{
-            "id": 63,
+            "id": 1500000001,
             "name": "Test DB",
             "type": "bigquery",
             "description": null,
@@ -699,7 +696,7 @@ description: Action-task gap compression CTEs
         }"#;
 
         let ds: DataSource = serde_json::from_str(json).unwrap();
-        assert_eq!(ds.id, 63);
+        assert_eq!(ds.id, 1_500_000_001);
         assert_eq!(ds.name, "Test DB");
         assert_eq!(ds.ds_type, "bigquery");
         assert_eq!(ds.syntax, Some("sql".to_string()));
@@ -712,7 +709,7 @@ description: Action-task gap compression CTEs
     #[test]
     fn test_datasource_with_nulls() {
         let json = r#"{
-            "id": 10,
+            "id": 1500000002,
             "name": "Minimal DB",
             "type": "pg",
             "description": "Test description",
@@ -727,7 +724,7 @@ description: Action-task gap compression CTEs
         }"#;
 
         let ds: DataSource = serde_json::from_str(json).unwrap();
-        assert_eq!(ds.id, 10);
+        assert_eq!(ds.id, 1_500_000_002);
         assert_eq!(ds.name, "Minimal DB");
         assert_eq!(ds.ds_type, "pg");
         assert_eq!(ds.description, Some("Test description".to_string()));
@@ -791,7 +788,7 @@ description: Action-task gap compression CTEs
     #[test]
     fn test_datasource_serialization() {
         let ds = DataSource {
-            id: 123,
+            id: 1_500_000_003,
             name: "My DB".to_string(),
             ds_type: "mysql".to_string(),
             syntax: Some("sql".to_string()),
@@ -806,7 +803,7 @@ description: Action-task gap compression CTEs
         };
 
         let json = serde_json::to_string(&ds).unwrap();
-        assert!(json.contains("\"id\":123"));
+        assert!(json.contains("\"id\":1500000003"));
         assert!(json.contains("\"name\":\"My DB\""));
         assert!(json.contains("\"type\":\"mysql\""));
         assert!(json.contains("\"syntax\":\"sql\""));
@@ -815,10 +812,10 @@ description: Action-task gap compression CTEs
     #[test]
     fn test_dashboard_deserialization() {
         let json = r#"{
-            "id": 2570,
+            "id": 1000000001,
             "name": "Test Dashboard",
             "slug": "test-dashboard",
-            "user_id": 530,
+            "user_id": 1600000001,
             "is_archived": false,
             "is_draft": false,
             "dashboard_filters_enabled": true,
@@ -827,10 +824,10 @@ description: Action-task gap compression CTEs
         }"#;
 
         let dashboard: Dashboard = serde_json::from_str(json).unwrap();
-        assert_eq!(dashboard.id, 2570);
+        assert_eq!(dashboard.id, 1_000_000_001);
         assert_eq!(dashboard.name, "Test Dashboard");
         assert_eq!(dashboard.slug, "test-dashboard");
-        assert_eq!(dashboard.user_id, 530);
+        assert_eq!(dashboard.user_id, 1_600_000_001);
         assert!(!dashboard.is_archived);
         assert!(!dashboard.is_draft);
         assert!(dashboard.filters_enabled);
@@ -841,18 +838,18 @@ description: Action-task gap compression CTEs
     #[test]
     fn test_dashboard_with_widgets() {
         let json = r##"{
-            "id": 2570,
+            "id": 1000000001,
             "name": "Test Dashboard",
             "slug": "test-dashboard",
-            "user_id": 530,
+            "user_id": 1600000001,
             "is_archived": false,
             "is_draft": false,
             "dashboard_filters_enabled": false,
             "tags": [],
             "widgets": [
                 {
-                    "id": 75035,
-                    "dashboard_id": 2570,
+                    "id": 1100000001,
+                    "dashboard_id": 1000000001,
                     "width": 1,
                     "text": "# Test Widget",
                     "options": {
@@ -865,16 +862,16 @@ description: Action-task gap compression CTEs
                     }
                 },
                 {
-                    "id": 75029,
-                    "dashboard_id": 2570,
+                    "id": 1100000002,
+                    "dashboard_id": 1000000001,
                     "width": 1,
-                    "visualization_id": 279588,
+                    "visualization_id": 1300000001,
                     "visualization": {
-                        "id": 279588,
-                        "name": "Total MAU",
+                        "id": 1300000001,
+                        "name": "Example Visualization",
                         "query": {
-                            "id": 114049,
-                            "name": "MAU Query"
+                            "id": 1200000002,
+                            "name": "Example Query"
                         }
                     },
                     "text": "",
@@ -898,14 +895,14 @@ description: Action-task gap compression CTEs
 
         let dashboard: Dashboard = serde_json::from_str(json).unwrap();
         assert_eq!(dashboard.widgets.len(), 2);
-        assert_eq!(dashboard.widgets[0].id, 75035);
+        assert_eq!(dashboard.widgets[0].id, 1_100_000_001);
         assert_eq!(dashboard.widgets[0].text, "# Test Widget");
         assert!(dashboard.widgets[0].visualization_id.is_none());
-        assert_eq!(dashboard.widgets[1].id, 75029);
-        assert_eq!(dashboard.widgets[1].visualization_id, Some(279_588));
+        assert_eq!(dashboard.widgets[1].id, 1_100_000_002);
+        assert_eq!(dashboard.widgets[1].visualization_id, Some(1_300_000_001));
         let viz = dashboard.widgets[1].visualization.as_ref().unwrap();
-        assert_eq!(viz.id, 279_588);
-        assert_eq!(viz.query.id, 114_049);
+        assert_eq!(viz.id, 1_300_000_001);
+        assert_eq!(viz.query.id, 1_200_000_002);
     }
 
     #[test]
@@ -931,10 +928,10 @@ description: Action-task gap compression CTEs
     #[test]
     fn test_dashboard_metadata_yaml() {
         let yaml = r"
-id: 2570
+id: 1000000001
 name: Test Dashboard
 slug: test-dashboard
-user_id: 530
+user_id: 1600000001
 is_draft: false
 is_archived: false
 dashboard_filters_enabled: true
@@ -942,7 +939,7 @@ tags:
   - tag1
   - tag2
 widgets:
-  - id: 75035
+  - id: 1100000001
     visualization_id: null
     query_id: null
     visualization_name: null
@@ -957,23 +954,23 @@ widgets:
 ";
 
         let metadata: DashboardMetadata = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(metadata.id, 2570);
+        assert_eq!(metadata.id, 1_000_000_001);
         assert_eq!(metadata.name, "Test Dashboard");
         assert_eq!(metadata.slug, "test-dashboard");
-        assert_eq!(metadata.user_id, 530);
+        assert_eq!(metadata.user_id, 1_600_000_001);
         assert!(!metadata.is_draft);
         assert!(!metadata.is_archived);
         assert!(metadata.filters_enabled);
         assert_eq!(metadata.tags, vec!["tag1", "tag2"]);
         assert_eq!(metadata.widgets.len(), 1);
-        assert_eq!(metadata.widgets[0].id, 75035);
+        assert_eq!(metadata.widgets[0].id, 1_100_000_001);
         assert_eq!(metadata.widgets[0].text, "# Test Widget");
     }
 
     #[test]
     fn test_widget_metadata_text_widget() {
         let yaml = r"
-id: 75035
+id: 1100000001
 visualization_id: null
 query_id: null
 visualization_name: null
@@ -988,7 +985,7 @@ options:
 ";
 
         let widget: WidgetMetadata = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(widget.id, 75035);
+        assert_eq!(widget.id, 1_100_000_001);
         assert!(widget.visualization_id.is_none());
         assert!(widget.query_id.is_none());
         assert!(widget.visualization_name.is_none());
@@ -1000,10 +997,10 @@ options:
     #[test]
     fn test_widget_metadata_viz_widget() {
         let yaml = r"
-id: 75029
-visualization_id: 279588
-query_id: 114049
-visualization_name: Total MAU
+id: 1100000002
+visualization_id: 1300000001
+query_id: 1200000002
+visualization_name: Example Visualization
 text: ''
 options:
   position:
@@ -1018,10 +1015,13 @@ options:
 ";
 
         let widget: WidgetMetadata = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(widget.id, 75029);
-        assert_eq!(widget.visualization_id, Some(279_588));
-        assert_eq!(widget.query_id, Some(114_049));
-        assert_eq!(widget.visualization_name, Some("Total MAU".to_string()));
+        assert_eq!(widget.id, 1_100_000_002);
+        assert_eq!(widget.visualization_id, Some(1_300_000_001));
+        assert_eq!(widget.query_id, Some(1_200_000_002));
+        assert_eq!(
+            widget.visualization_name,
+            Some("Example Visualization".to_string())
+        );
         assert_eq!(widget.text, "");
         assert!(widget.options.parameter_mappings.is_some());
     }
@@ -1029,8 +1029,8 @@ options:
     #[test]
     fn test_create_widget_serialization() {
         let widget = CreateWidget {
-            dashboard_id: 2570,
-            visualization_id: Some(279_588),
+            dashboard_id: 1_000_000_001,
+            visualization_id: Some(1_300_000_001),
             text: String::new(),
             width: 1,
             options: WidgetOptions {
@@ -1045,8 +1045,8 @@ options:
         };
 
         let json = serde_json::to_string(&widget).unwrap();
-        assert!(json.contains("\"dashboard_id\":2570"));
-        assert!(json.contains("\"visualization_id\":279588"));
+        assert!(json.contains("\"dashboard_id\":1000000001"));
+        assert!(json.contains("\"visualization_id\":1300000001"));
         assert!(json.contains("\"sizeX\":3"));
         assert!(json.contains("\"sizeY\":2"));
     }
@@ -1054,7 +1054,7 @@ options:
     #[test]
     fn test_create_text_widget_serialization() {
         let widget = CreateWidget {
-            dashboard_id: 2570,
+            dashboard_id: 1_000_000_001,
             visualization_id: None,
             text: "Some text".to_string(),
             width: 1,
@@ -1078,14 +1078,14 @@ options:
         let json = r#"{
             "results": [
                 {
-                    "id": 2570,
+                    "id": 1000000001,
                     "name": "Dashboard 1",
                     "slug": "dashboard-1",
                     "is_draft": false,
                     "is_archived": false
                 },
                 {
-                    "id": 2558,
+                    "id": 1000000002,
                     "name": "Dashboard 2",
                     "slug": "dashboard-2",
                     "is_draft": true,
@@ -1098,12 +1098,12 @@ options:
         let response: DashboardsResponse = serde_json::from_str(json).unwrap();
         assert_eq!(response.results.len(), 2);
         assert_eq!(response.count, 2);
-        assert_eq!(response.results[0].id, 2570);
+        assert_eq!(response.results[0].id, 1_000_000_001);
         assert_eq!(response.results[0].name, "Dashboard 1");
         assert_eq!(response.results[0].slug, "dashboard-1");
         assert!(!response.results[0].is_draft);
         assert!(!response.results[0].is_archived);
-        assert_eq!(response.results[1].id, 2558);
+        assert_eq!(response.results[1].id, 1_000_000_002);
         assert_eq!(response.results[1].slug, "dashboard-2");
         assert!(response.results[1].is_draft);
     }

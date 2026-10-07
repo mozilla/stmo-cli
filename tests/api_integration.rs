@@ -866,7 +866,7 @@ fn query_json(id: u64, name: &str) -> serde_json::Value {
         "id": id,
         "name": name,
         "query": "SELECT 1",
-        "data_source_id": 1,
+        "data_source_id": SAMPLE_DATA_SOURCE_ID,
         "is_archived": false,
         "is_draft": false,
         "schedule": null,

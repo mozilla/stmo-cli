@@ -52,9 +52,9 @@ parameter schema, so inline any values directly in the SQL.
 **Note**: Only dashboards you've favorited in the Redash web UI will appear in `dashboards discover`.
 
 Examples:
-- `stmo-cli dashboards fetch firefox-desktop-on-steamos`
+- `stmo-cli dashboards fetch example-dashboard`
 - `stmo-cli dashboards deploy --all`
-- `stmo-cli dashboards archive bug-2006698---ccov-build-regression`
+- `stmo-cli dashboards archive example-dashboard`
 
 ### Snippets
 
@@ -70,9 +70,9 @@ changing a snippet it's used in.
 **snippets delete**: Delete snippets in Redash **and** remove local files (`<ids>`) — snippets have no archive concept, so this is a direct, irreversible delete (unlike `archive`, which keeps the resource recoverable via `unarchive`)
 
 Examples:
-- `stmo-cli snippets fetch 31`
+- `stmo-cli snippets fetch <snippet-id>`
 - `stmo-cli snippets deploy --all`
-- `stmo-cli snippets delete 31 42`
+- `stmo-cli snippets delete <snippet-id> [<snippet-id>...]`
 
 ## File Format
 
@@ -81,13 +81,13 @@ Examples:
 
 Example YAML with visualizations:
 ```yaml
-id: 123
+id: 1200000001
 name: My Query
-data_source_id: 63
+data_source_id: 1500000001
 options:
   parameters: []
 visualizations:
-  - id: 456          # existing visualization — deploy updates it by ID
+  - id: 1300000001   # existing visualization — deploy updates it by ID
     name: Chart
     type: CHART
     options: {}

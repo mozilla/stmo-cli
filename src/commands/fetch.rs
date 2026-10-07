@@ -80,7 +80,7 @@ pub async fn fetch(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Res
         queries
     } else {
         anyhow::bail!(
-            "No query IDs specified. Use --all to fetch tracked queries, or provide specific query IDs.\n\nExamples:\n  stmo-cli fetch --all\n  stmo-cli fetch 123 456 789\n  stmo-cli discover  (to see available queries)"
+            "No query IDs specified. Use --all to fetch tracked queries, or provide specific query IDs.\n\nExamples:\n  stmo-cli fetch --all\n  stmo-cli fetch <query-id> [<query-id>...]\n  stmo-cli discover  (to see available queries)"
         );
     };
 
@@ -194,8 +194,8 @@ mod tests {
     fn test_slugify_mixed() {
         assert_eq!(slugify("Mozilla's .deb Package!"), "mozilla-s-deb-package");
         assert_eq!(
-            slugify("Copy of 100234 - Gecko decision task"),
-            "copy-of-100234-gecko-decision-task"
+            slugify("Copy of an example query"),
+            "copy-of-an-example-query"
         );
     }
 }

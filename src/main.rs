@@ -37,7 +37,7 @@ enum Commands {
 
     #[command(about = "Fetch queries from Redash")]
     Fetch {
-        #[arg(help = "Query IDs to fetch (e.g., 123 456 789)")]
+        #[arg(help = "Query IDs to fetch (e.g., <query-id> <query-id>)")]
         query_ids: Vec<u64>,
         #[arg(
             long,
@@ -48,7 +48,7 @@ enum Commands {
 
     #[command(about = "Deploy local changes to Redash (only changed queries by default)")]
     Deploy {
-        #[arg(help = "Query IDs to deploy (e.g., 123 456 789)")]
+        #[arg(help = "Query IDs to deploy (e.g., <query-id> <query-id>)")]
         query_ids: Vec<u64>,
         #[arg(long, help = "Deploy all queries instead of only changed ones")]
         all: bool,
@@ -129,7 +129,7 @@ enum Commands {
 
     #[command(about = "Archive queries in Redash and remove local files")]
     Archive {
-        #[arg(help = "Query IDs to archive (e.g., 123 456 789)")]
+        #[arg(help = "Query IDs to archive (e.g., <query-id> <query-id>)")]
         query_ids: Vec<u64>,
 
         #[arg(
@@ -141,7 +141,7 @@ enum Commands {
 
     #[command(about = "Restore archived queries")]
     Unarchive {
-        #[arg(help = "Query IDs to unarchive (e.g., 123 456 789)")]
+        #[arg(help = "Query IDs to unarchive (e.g., <query-id> <query-id>)")]
         query_ids: Vec<u64>,
     },
 
@@ -159,10 +159,10 @@ enum Commands {
 
     #[command(
         about = "Set or clear a query's refresh schedule (updates local YAML; run 'deploy' to push to Redash)",
-        long_about = "Set or clear a query's refresh schedule.\n\nUpdates the schedule field in each query's local YAML file. The change is not pushed to Redash until you run 'stmo-cli deploy'.\n\nExamples:\n  stmo-cli schedule 123 456 --interval 86400 --time 07:15\n  stmo-cli schedule 123 --clear"
+        long_about = "Set or clear a query's refresh schedule.\n\nUpdates the schedule field in each query's local YAML file. The change is not pushed to Redash until you run 'stmo-cli deploy'.\n\nExamples:\n  stmo-cli schedule <query-id> [<query-id>...] --interval 86400 --time 07:15\n  stmo-cli schedule <query-id> --clear"
     )]
     Schedule {
-        #[arg(help = "Query IDs to update (e.g., 123 456 789)")]
+        #[arg(help = "Query IDs to update (e.g., <query-id> <query-id>)")]
         query_ids: Vec<u64>,
 
         #[arg(
@@ -205,7 +205,7 @@ enum DashboardCommands {
     #[command(about = "Fetch dashboards from Redash")]
     Fetch {
         #[arg(
-            help = "Dashboard slugs to fetch (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)"
+            help = "Dashboard slugs to fetch (e.g., example-dashboard another-example-dashboard)"
         )]
         slugs: Vec<String>,
     },
@@ -213,7 +213,7 @@ enum DashboardCommands {
     #[command(about = "Deploy dashboard changes to Redash")]
     Deploy {
         #[arg(
-            help = "Dashboard slugs to deploy (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)"
+            help = "Dashboard slugs to deploy (e.g., example-dashboard another-example-dashboard)"
         )]
         slugs: Vec<String>,
         #[arg(long, help = "Deploy all tracked dashboards")]
@@ -223,7 +223,7 @@ enum DashboardCommands {
     #[command(about = "Archive dashboards in Redash and remove local files")]
     Archive {
         #[arg(
-            help = "Dashboard slugs to archive (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)"
+            help = "Dashboard slugs to archive (e.g., example-dashboard another-example-dashboard)"
         )]
         slugs: Vec<String>,
     },
@@ -231,7 +231,7 @@ enum DashboardCommands {
     #[command(about = "Restore archived dashboards")]
     Unarchive {
         #[arg(
-            help = "Dashboard slugs to unarchive (e.g., firefox-desktop-on-steamos bug-2006698---ccov-build-regression)"
+            help = "Dashboard slugs to unarchive (e.g., example-dashboard another-example-dashboard)"
         )]
         slugs: Vec<String>,
     },
@@ -244,7 +244,7 @@ enum SnippetCommands {
 
     #[command(about = "Fetch query snippets from Redash")]
     Fetch {
-        #[arg(help = "Snippet IDs to fetch (e.g., 31 42)")]
+        #[arg(help = "Snippet IDs to fetch (e.g., <snippet-id> <snippet-id>)")]
         snippet_ids: Vec<u64>,
         #[arg(
             long,
@@ -255,7 +255,7 @@ enum SnippetCommands {
 
     #[command(about = "Deploy local changes to Redash (only changed snippets by default)")]
     Deploy {
-        #[arg(help = "Snippet IDs to deploy (e.g., 31 42)")]
+        #[arg(help = "Snippet IDs to deploy (e.g., <snippet-id> <snippet-id>)")]
         snippet_ids: Vec<u64>,
         #[arg(long, help = "Deploy all snippets instead of only changed ones")]
         all: bool,
@@ -263,7 +263,7 @@ enum SnippetCommands {
 
     #[command(about = "Delete query snippets in Redash and remove local files")]
     Delete {
-        #[arg(help = "Snippet IDs to delete (e.g., 31 42)")]
+        #[arg(help = "Snippet IDs to delete (e.g., <snippet-id> <snippet-id>)")]
         snippet_ids: Vec<u64>,
     },
 }
@@ -335,14 +335,14 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
                 commands::archive::archive(&client, query_ids).await?;
             } else {
                 anyhow::bail!(
-                    "No query IDs specified. Use specific query IDs or --cleanup flag.\n\nExamples:\n  stmo-cli archive 123 456\n  stmo-cli archive --cleanup"
+                    "No query IDs specified. Use specific query IDs or --cleanup flag.\n\nExamples:\n  stmo-cli archive <query-id> [<query-id>...]\n  stmo-cli archive --cleanup"
                 );
             }
         }
         Commands::Unarchive { query_ids } => {
             if query_ids.is_empty() {
                 anyhow::bail!(
-                    "No query IDs specified. Provide query IDs to unarchive.\n\nExample:\n  stmo-cli unarchive 123 456"
+                    "No query IDs specified. Provide query IDs to unarchive.\n\nExample:\n  stmo-cli unarchive <query-id> [<query-id>...]"
                 );
             }
             commands::archive::unarchive(&client, query_ids).await?;
@@ -356,7 +356,7 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
         } => {
             if query_ids.is_empty() {
                 anyhow::bail!(
-                    "No query IDs specified. Provide query IDs to update.\n\nExamples:\n  stmo-cli schedule 123 456 --interval 86400 --time 07:15\n  stmo-cli schedule 123 --clear"
+                    "No query IDs specified. Provide query IDs to update.\n\nExamples:\n  stmo-cli schedule <query-id> [<query-id>...] --interval 86400 --time 07:15\n  stmo-cli schedule <query-id> --clear"
                 );
             }
             commands::schedule::schedule(
@@ -393,7 +393,7 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
             SnippetCommands::Delete { snippet_ids } => {
                 if snippet_ids.is_empty() {
                     anyhow::bail!(
-                        "No snippet IDs specified. Provide snippet IDs to delete.\n\nExample:\n  stmo-cli snippets delete 31 42"
+                        "No snippet IDs specified. Provide snippet IDs to delete.\n\nExample:\n  stmo-cli snippets delete <snippet-id> [<snippet-id>...]"
                     );
                 }
                 commands::snippets::delete(&client, snippet_ids).await?;

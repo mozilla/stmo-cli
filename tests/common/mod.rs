@@ -11,16 +11,16 @@ use wiremock::matchers::{body_partial_json, method, path, path_regex};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
 // Synthetic fixture IDs kept separate from live Redash IDs.
-pub const SAMPLE_DASHBOARD_ID: u64 = 9_000_000_001;
-pub const SAMPLE_SECOND_DASHBOARD_ID: u64 = 9_000_000_002;
-pub const SAMPLE_CREATED_DASHBOARD_ID: u64 = 9_000_000_003;
-pub const SAMPLE_WIDGET_ID: u64 = 9_100_000_001;
-pub const SAMPLE_QUERY_ID: u64 = 9_200_000_001;
-pub const SAMPLE_VISUALIZATION_ID: u64 = 9_300_000_001;
-pub const SAMPLE_DATA_SOURCE_ID: u64 = 9_500_000_001;
-pub const SAMPLE_SECOND_DATA_SOURCE_ID: u64 = 9_500_000_002;
-pub const SAMPLE_USER_ID: u64 = 9_600_000_001;
-pub const SAMPLE_CREATED_WIDGET_ID: u64 = 9_100_000_002;
+pub const SAMPLE_DASHBOARD_ID: u64 = 1_000_000_001;
+pub const SAMPLE_SECOND_DASHBOARD_ID: u64 = 1_000_000_002;
+pub const SAMPLE_CREATED_DASHBOARD_ID: u64 = 1_000_000_003;
+pub const SAMPLE_WIDGET_ID: u64 = 1_100_000_001;
+pub const SAMPLE_QUERY_ID: u64 = 1_200_000_001;
+pub const SAMPLE_VISUALIZATION_ID: u64 = 1_300_000_001;
+pub const SAMPLE_DATA_SOURCE_ID: u64 = 1_500_000_001;
+pub const SAMPLE_SECOND_DATA_SOURCE_ID: u64 = 1_500_000_002;
+pub const SAMPLE_USER_ID: u64 = 1_600_000_001;
+pub const SAMPLE_CREATED_WIDGET_ID: u64 = 1_100_000_002;
 
 pub struct TestContext {
     pub mock_server: MockServer,
@@ -209,7 +209,7 @@ pub fn mock_list_data_sources() -> Mock {
                 "view_only": false,
                 "queue_name": "bq_queries",
                 "scheduled_queue_name": "bq_scheduled_queries",
-                "groups": {"9000000001": false},
+                "groups": {"1000000001": false},
                 "options": {}
             },
             {
@@ -223,7 +223,7 @@ pub fn mock_list_data_sources() -> Mock {
                 "view_only": false,
                 "queue_name": "queries",
                 "scheduled_queue_name": "scheduled_queries",
-                "groups": {"9000000001": false},
+                "groups": {"1000000001": false},
                 "options": {}
             }
         ])))
@@ -924,7 +924,7 @@ impl Respond for UpdateVisualizationResponder {
 // or "update" the query) always reflect the current visualization list, and
 // visualization POSTs mutate that same list. Needed to reproduce writeback
 // bugs, where a static mock can't tell a pre-deploy GET from a post-deploy
-// one. New visualizations are assigned ids starting at 300.
+// one. New visualizations are assigned IDs from the reserved synthetic range.
 pub async fn mount_stateful_query(
     server: &MockServer,
     query_id: u64,
@@ -934,7 +934,7 @@ pub async fn mount_stateful_query(
     let vizs = Arc::new(Mutex::new(
         initial_vizs.as_array().cloned().unwrap_or_default(),
     ));
-    let next_id = Arc::new(AtomicU64::new(300));
+    let next_id = Arc::new(AtomicU64::new(1_300_000_002));
 
     let query_responder = || QueryStateResponder {
         query_id,

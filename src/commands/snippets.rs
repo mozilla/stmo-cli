@@ -264,7 +264,7 @@ pub async fn fetch(client: &RedashClient, snippet_ids: Vec<u64>, all: bool) -> R
         fetched
     } else {
         bail!(
-            "No snippet IDs specified. Use --all to fetch tracked snippets, or provide specific snippet IDs.\n\nExamples:\n  stmo-cli snippets fetch --all\n  stmo-cli snippets fetch 31\n  stmo-cli snippets list  (to see available snippets)"
+            "No snippet IDs specified. Use --all to fetch tracked snippets, or provide specific snippet IDs.\n\nExamples:\n  stmo-cli snippets fetch --all\n  stmo-cli snippets fetch <snippet-id>\n  stmo-cli snippets list  (to see available snippets)"
         );
     };
 
@@ -463,11 +463,11 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir = temp_dir.path();
 
-        fs::write(dir.join("31-old_trigger_name.yaml"), "test").unwrap();
-        fs::write(dir.join("31-new_trigger_name.yaml"), "test").unwrap();
+        fs::write(dir.join("1700000001-old_trigger_name.yaml"), "test").unwrap();
+        fs::write(dir.join("1700000001-new_trigger_name.yaml"), "test").unwrap();
 
         let ids = extract_snippet_ids_from_path(dir).unwrap();
-        assert_eq!(ids, vec![31]);
+        assert_eq!(ids, vec![1_700_000_001]);
     }
 
     #[test]
@@ -475,12 +475,12 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir = temp_dir.path();
 
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.yaml"), "test").unwrap();
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.sql"), "test").unwrap();
+        fs::write(dir.join("1700000001-example_snippet.yaml"), "test").unwrap();
+        fs::write(dir.join("1700000001-example_snippet.sql"), "test").unwrap();
         fs::write(dir.join("README.md"), "test").unwrap();
 
         let ids = extract_snippet_ids_from_path(dir).unwrap();
-        assert_eq!(ids, vec![31]);
+        assert_eq!(ids, vec![1_700_000_001]);
     }
 
     #[test]
@@ -488,13 +488,12 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir = temp_dir.path();
 
-        // "31.yaml" has no '-' separator, so the whole stem fails to parse as a u64
-        // and must be silently skipped, not mistaken for id 31.
-        fs::write(dir.join("31.yaml"), "test").unwrap();
-        fs::write(dir.join("42-zebra.yaml"), "test").unwrap();
+        // An ID without a '-' separator is skipped instead of being mistaken for a snippet ID.
+        fs::write(dir.join("1700000001.yaml"), "test").unwrap();
+        fs::write(dir.join("1700000002-example_beta.yaml"), "test").unwrap();
 
         let ids = extract_snippet_ids_from_path(dir).unwrap();
-        assert_eq!(ids, vec![42]);
+        assert_eq!(ids, vec![1_700_000_002]);
     }
 
     #[test]
@@ -515,12 +514,12 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir = temp_dir.path();
 
-        fs::write(dir.join("42-zebra.yaml"), "test").unwrap();
-        fs::write(dir.join("9-hll_convert.yaml"), "test").unwrap();
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.yaml"), "test").unwrap();
+        fs::write(dir.join("1700000002-example_beta.yaml"), "test").unwrap();
+        fs::write(dir.join("1700000003-example_alpha.yaml"), "test").unwrap();
+        fs::write(dir.join("1700000001-example_snippet.yaml"), "test").unwrap();
 
         let ids = extract_snippet_ids_from_path(dir).unwrap();
-        assert_eq!(ids, vec![9, 31, 42]);
+        assert_eq!(ids, vec![1_700_000_001, 1_700_000_002, 1_700_000_003]);
     }
 
     #[test]
@@ -528,10 +527,14 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir = temp_dir.path();
 
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.sql"), "SELECT 1").unwrap();
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.yaml"), "id: 31").unwrap();
+        fs::write(dir.join("1700000001-example_snippet.sql"), "SELECT 1").unwrap();
+        fs::write(
+            dir.join("1700000001-example_snippet.yaml"),
+            "id: 1700000001",
+        )
+        .unwrap();
 
-        let result = find_snippet_files_in(dir, 31).unwrap();
+        let result = find_snippet_files_in(dir, 1_700_000_001).unwrap();
         assert!(result.is_some());
         let (sql_path, yaml_path) = result.unwrap();
         assert_eq!(
@@ -549,8 +552,12 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir = temp_dir.path();
 
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.sql"), "SELECT 1").unwrap();
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.yaml"), "id: 31").unwrap();
+        fs::write(dir.join("1700000001-example_snippet.sql"), "SELECT 1").unwrap();
+        fs::write(
+            dir.join("1700000001-example_snippet.yaml"),
+            "id: 1700000001",
+        )
+        .unwrap();
 
         let result = find_snippet_files_in(dir, 99).unwrap();
         assert!(result.is_none());
@@ -561,9 +568,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir = temp_dir.path();
 
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.sql"), "SELECT 1").unwrap();
+        fs::write(dir.join("1700000001-example_snippet.sql"), "SELECT 1").unwrap();
 
-        let result = find_snippet_files_in(dir, 31).unwrap();
+        let result = find_snippet_files_in(dir, 1_700_000_001).unwrap();
         assert!(result.is_none());
     }
 
@@ -595,9 +602,13 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir = temp_dir.path();
 
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.yaml"), "id: 31").unwrap();
+        fs::write(
+            dir.join("1700000001-example_snippet.yaml"),
+            "id: 1700000001",
+        )
+        .unwrap();
 
-        let result = find_snippet_files_in(dir, 31).unwrap();
+        let result = find_snippet_files_in(dir, 1_700_000_001).unwrap();
         assert!(result.is_none());
     }
 
@@ -606,11 +617,15 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dir = temp_dir.path();
 
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.sql"), "SELECT 1").unwrap();
-        fs::write(dir.join("31-reviewbot_e2e_action_ctcs.yaml"), "id: 31").unwrap();
+        fs::write(dir.join("1700000001-example_snippet.sql"), "SELECT 1").unwrap();
+        fs::write(
+            dir.join("1700000001-example_snippet.yaml"),
+            "id: 1700000001",
+        )
+        .unwrap();
 
-        // Searching for id 3 must not match a file whose id (31) merely starts with "3".
-        let result = find_snippet_files_in(dir, 3).unwrap();
+        // Searching for a numeric prefix must not match a longer resource ID.
+        let result = find_snippet_files_in(dir, 970_000_000).unwrap();
         assert!(result.is_none());
     }
 
@@ -620,15 +635,15 @@ mod tests {
         let dir = temp_dir.path();
 
         fs::write(
-            dir.join("31-reviewbot_e2e_action_ctcs.yaml"),
-            "id: 31\ntrigger: reviewbot_e2e_action_ctcs\ndescription: null\n",
+            dir.join("1700000001-example_snippet.yaml"),
+            "id: 1700000001\ntrigger: example_snippet\ndescription: null\n",
         )
         .unwrap();
 
         let metadata = get_all_snippet_metadata_from_path(dir).unwrap();
         assert_eq!(
             metadata,
-            vec![(31, "reviewbot_e2e_action_ctcs".to_string())]
+            vec![(1_700_000_001, "example_snippet".to_string())]
         );
     }
 
@@ -638,20 +653,23 @@ mod tests {
         let dir = temp_dir.path();
 
         fs::write(
-            dir.join("42-zebra.yaml"),
-            "id: 42\ntrigger: zebra\ndescription: null\n",
+            dir.join("1700000002-example_beta.yaml"),
+            "id: 1700000002\ntrigger: example_beta\ndescription: null\n",
         )
         .unwrap();
         fs::write(
-            dir.join("9-hll_convert.yaml"),
-            "id: 9\ntrigger: hll_convert\ndescription: null\n",
+            dir.join("1700000003-example_alpha.yaml"),
+            "id: 1700000003\ntrigger: example_alpha\ndescription: null\n",
         )
         .unwrap();
 
         let metadata = get_all_snippet_metadata_from_path(dir).unwrap();
         assert_eq!(
             metadata,
-            vec![(9, "hll_convert".to_string()), (42, "zebra".to_string())]
+            vec![
+                (1_700_000_002, "example_beta".to_string()),
+                (1_700_000_003, "example_alpha".to_string())
+            ]
         );
     }
 
@@ -746,13 +764,13 @@ mod tests {
         let dir = temp_dir.path();
 
         fs::write(
-            dir.join("120506-first_trigger.yaml"),
-            "id: 120506\ntrigger: first_trigger\ndescription: null\n",
+            dir.join("1700000002-first_trigger.yaml"),
+            "id: 1700000002\ntrigger: first_trigger\ndescription: null\n",
         )
         .unwrap();
         fs::write(
-            dir.join("120506-second_trigger.yaml"),
-            "id: 120506\ntrigger: second_trigger\ndescription: null\n",
+            dir.join("1700000002-second_trigger.yaml"),
+            "id: 1700000002\ntrigger: second_trigger\ndescription: null\n",
         )
         .unwrap();
 
@@ -760,52 +778,53 @@ mod tests {
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Multiple local files resolve to the same target"));
-        assert!(err_msg.contains("id 120506"));
-        assert!(err_msg.contains("120506-first_trigger.yaml"));
-        assert!(err_msg.contains("120506-second_trigger.yaml"));
+        assert!(err_msg.contains("id 1700000002"));
+        assert!(err_msg.contains("1700000002-first_trigger.yaml"));
+        assert!(err_msg.contains("1700000002-second_trigger.yaml"));
     }
 
     #[test]
     fn test_snippet_differs_false_when_identical() {
         let metadata = SnippetMetadata {
-            id: 1,
+            id: 1_700_000_001,
             trigger: "t".to_string(),
             description: None,
         };
-        let server = make_server_snippet(1, "t", "SELECT 1", None);
+        let server = make_server_snippet(1_700_000_001, "t", "SELECT 1", None);
         assert!(!snippet_differs("SELECT 1", &metadata, &server));
     }
 
     #[test]
     fn test_snippet_differs_true_when_body_differs() {
         let metadata = SnippetMetadata {
-            id: 1,
+            id: 1_700_000_001,
             trigger: "t".to_string(),
             description: None,
         };
-        let server = make_server_snippet(1, "t", "SELECT 1", None);
+        let server = make_server_snippet(1_700_000_001, "t", "SELECT 1", None);
         assert!(snippet_differs("SELECT 2", &metadata, &server));
     }
 
     #[test]
     fn test_snippet_differs_true_when_trigger_differs() {
         let metadata = SnippetMetadata {
-            id: 1,
+            id: 1_700_000_001,
             trigger: "local_trigger".to_string(),
             description: None,
         };
-        let server = make_server_snippet(1, "server_trigger", "SELECT 1", None);
+        let server = make_server_snippet(1_700_000_001, "server_trigger", "SELECT 1", None);
         assert!(snippet_differs("SELECT 1", &metadata, &server));
     }
 
     #[test]
     fn test_snippet_differs_true_when_description_differs() {
         let metadata = SnippetMetadata {
-            id: 1,
+            id: 1_700_000_001,
             trigger: "t".to_string(),
             description: Some("local".to_string()),
         };
-        let server = make_server_snippet(1, "t", "SELECT 1", Some("server".to_string()));
+        let server =
+            make_server_snippet(1_700_000_001, "t", "SELECT 1", Some("server".to_string()));
         assert!(snippet_differs("SELECT 1", &metadata, &server));
     }
 

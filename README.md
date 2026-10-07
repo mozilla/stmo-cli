@@ -12,9 +12,9 @@ your behalf. Install it and set your API key. It can then help you:
 - **Analyze** — export data for deeper analysis with other tools
 
 For example, ask Claude Code or Codex to:
-- "Find queries about Firefox DAU"
+- "Find queries about an example metric"
 - "Write a query to track [metric] over time"
-- "Fetch and run query #12345"
+- "Fetch and run query #<query-id>"
 - "Explore what telemetry tables are available"
 
 Claude Code users can pair it with the [mozdata plugin](https://github.com/mozilla/internal-aidev-plugins/tree/main/plugins/mozdata) for telemetry expertise and probe discovery. Codex users can use `stmo-cli` directly.
@@ -96,12 +96,12 @@ runs git on your behalf unless you say yes — no more surprise commits.
 4. Discover available queries:
 ```bash
 stmo-cli discover                          # List your own queries
-stmo-cli discover --search "firefox dau"   # Full-text search queries + dashboards
+stmo-cli discover --search "example metric" # Full-text search queries + dashboards
 ```
 
 5. Fetch specific queries:
 ```bash
-stmo-cli fetch 123 456 789
+stmo-cli fetch <query-id> [<query-id>...]
 ```
 
 ## Usage
@@ -110,9 +110,9 @@ stmo-cli fetch 123 456 789
 
 ```bash
 stmo-cli fetch --all                       # Fetch all tracked queries
-stmo-cli fetch 123 456 789                 # Fetch specific queries
+stmo-cli fetch <query-id> [<query-id>...]   # Fetch specific queries
 stmo-cli discover                          # List your own queries
-stmo-cli discover --search "firefox dau"   # Full-text search queries + dashboards (--limit, default 50)
+stmo-cli discover --search "example metric" # Full-text search queries + dashboards (--limit, default 50)
 ```
 
 This creates/updates:
@@ -136,12 +136,12 @@ recommended (`stmo-cli init` can set that up for you).
 ### Execute Queries
 
 ```bash
-stmo-cli execute 123                                       # Run query 123 (deploys local changes first, if any)
-stmo-cli execute 123 --param start_date=2026-06-15
-stmo-cli execute 123 --param channels='["release","beta"]' # Multi-value enum as JSON
+stmo-cli execute <query-id>                                # Run a query (deploys local changes first, if any)
+stmo-cli execute <query-id> --param start_date=2026-06-15
+stmo-cli execute <query-id> --param channels='["release","beta"]' # Multi-value enum as JSON
 stmo-cli data-sources                                      # List data sources
-echo 'SELECT 1' | stmo-cli execute --data-source 321       # Run arbitrary SQL against a data source
-stmo-cli execute --data-source 321 --file scratch.sql
+echo 'SELECT 1' | stmo-cli execute --data-source <data-source-id> # Run arbitrary SQL against a data source
+stmo-cli execute --data-source <data-source-id> --file scratch.sql
 ```
 
 `execute ID` deploys the local `.sql`/`.yaml` first if it differs from what's stored on the
@@ -160,11 +160,11 @@ possible, anything that isn't valid JSON is treated as a plain string.
 
 ```bash
 stmo-cli snippets list                     # List query snippets from Redash
-stmo-cli snippets fetch 31 42              # Fetch specific snippets
+stmo-cli snippets fetch <snippet-id> [<snippet-id>...] # Fetch specific snippets
 stmo-cli snippets fetch --all              # Fetch all tracked snippets
 stmo-cli snippets deploy                   # Deploy snippets whose local content differs from what's on Redash
 stmo-cli snippets deploy --all             # Deploy all snippets
-stmo-cli snippets delete 31 42             # Delete snippets in Redash and remove local files
+stmo-cli snippets delete <snippet-id> [<snippet-id>...] # Delete snippets in Redash and remove local files
 ```
 
 Snippets don't have an archive concept in Redash — `snippets delete` removes the snippet on
@@ -174,13 +174,13 @@ the server and deletes the local files in one step; there's no separate `--clean
 
 ```
 queries/
-├── 123-mobile-crashes.sql
-└── 123-mobile-crashes.yaml
+├── {query-id}-example-query.sql
+└── {query-id}-example-query.yaml
 dashboards/
-└── 456-my-dashboard.yaml
+└── {dashboard-id}-example-dashboard.yaml
 snippets/
-├── 31-reviewbot_e2e_action_ctcs.sql
-└── 31-reviewbot_e2e_action_ctcs.yaml
+├── {snippet-id}-example-snippet.sql
+└── {snippet-id}-example-snippet.yaml
 ```
 
 Query IDs are embedded in filenames (`{id}-{slug}.{ext}`), so no separate config file is needed.

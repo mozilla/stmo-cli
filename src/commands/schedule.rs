@@ -51,7 +51,7 @@ pub fn schedule(
 ) -> Result<()> {
     if !clear && interval.is_none() {
         bail!(
-            "Either --interval or --clear must be specified.\n\nExamples:\n  stmo-cli schedule 123 456 --interval 86400 --time 07:15\n  stmo-cli schedule 123 --clear"
+            "Either --interval or --clear must be specified.\n\nExamples:\n  stmo-cli schedule <query-id> [<query-id>...] --interval 86400 --time 07:15\n  stmo-cli schedule <query-id> --clear"
         );
     }
 
@@ -116,12 +116,12 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    const SAMPLE_YAML: &str = "id: 121795\nname: test query\ndescription: null\ndata_source_id: 63\nschedule: null\noptions:\n  parameters: []\nvisualizations: []\ntags: null\n";
+    const SAMPLE_YAML: &str = "id: 1200000001\nname: Example Query\ndescription: null\ndata_source_id: 1500000001\nschedule: null\noptions:\n  parameters: []\nvisualizations: []\ntags: null\n";
 
     fn create_test_query(dir: &Path, id: u64, yaml_content: &str) {
-        let yaml_path = dir.join(format!("{id}-test-query.yaml"));
+        let yaml_path = dir.join(format!("{id}-example-query.yaml"));
         fs::write(yaml_path, yaml_content).unwrap();
-        let sql_path = dir.join(format!("{id}-test-query.sql"));
+        let sql_path = dir.join(format!("{id}-example-query.sql"));
         fs::write(sql_path, "SELECT 1").unwrap();
     }
 
@@ -129,9 +129,9 @@ mod tests {
     fn set_schedule_writes_yaml() {
         let temp_dir = TempDir::new().unwrap();
         let queries_dir = temp_dir.path();
-        create_test_query(queries_dir, 121_795, SAMPLE_YAML);
+        create_test_query(queries_dir, 1_200_000_001, SAMPLE_YAML);
 
-        let yaml_path = queries_dir.join("121795-test-query.yaml");
+        let yaml_path = queries_dir.join("1200000001-example-query.yaml");
         update_yaml_schedule(
             &yaml_path,
             Some(Schedule {
@@ -156,10 +156,10 @@ mod tests {
     fn clear_schedule_writes_null() {
         let temp_dir = TempDir::new().unwrap();
         let queries_dir = temp_dir.path();
-        let yaml_with_schedule = "id: 121795\nname: test query\ndescription: null\ndata_source_id: 63\nschedule:\n  interval: 86400\n  time: '07:15'\n  day_of_week: null\n  until: null\noptions:\n  parameters: []\nvisualizations: []\ntags: null\n";
-        create_test_query(queries_dir, 121_795, yaml_with_schedule);
+        let yaml_with_schedule = "id: 1200000001\nname: Example Query\ndescription: null\ndata_source_id: 1500000001\nschedule:\n  interval: 86400\n  time: '07:15'\n  day_of_week: null\n  until: null\noptions:\n  parameters: []\nvisualizations: []\ntags: null\n";
+        create_test_query(queries_dir, 1_200_000_001, yaml_with_schedule);
 
-        let yaml_path = queries_dir.join("121795-test-query.yaml");
+        let yaml_path = queries_dir.join("1200000001-example-query.yaml");
         update_yaml_schedule(&yaml_path, None).unwrap();
 
         let content = fs::read_to_string(&yaml_path).unwrap();
@@ -171,9 +171,9 @@ mod tests {
     fn find_yaml_finds_by_id_prefix() {
         let temp_dir = TempDir::new().unwrap();
         let queries_dir = temp_dir.path();
-        create_test_query(queries_dir, 121_795, SAMPLE_YAML);
+        create_test_query(queries_dir, 1_200_000_001, SAMPLE_YAML);
 
-        let found = find_yaml_path_in(queries_dir, 121_795).unwrap();
+        let found = find_yaml_path_in(queries_dir, 1_200_000_001).unwrap();
         assert!(found.is_some());
 
         let not_found = find_yaml_path_in(queries_dir, 99_999).unwrap();

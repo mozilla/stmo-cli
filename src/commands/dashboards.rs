@@ -128,9 +128,7 @@ pub async fn discover(client: &RedashClient) -> Result<()> {
 
     println!("\nUsage:");
     println!("  stmo-cli dashboards fetch <slug> [<slug>...]");
-    println!(
-        "  stmo-cli dashboards fetch firefox-desktop-on-steamos bug-2006698---ccov-build-regression"
-    );
+    println!("  stmo-cli dashboards fetch example-dashboard another-example-dashboard");
 
     Ok(())
 }
@@ -149,7 +147,7 @@ async fn fetch_dashboard_to_file(
 pub async fn fetch(client: &RedashClient, dashboard_slugs: Vec<String>) -> Result<()> {
     if dashboard_slugs.is_empty() {
         anyhow::bail!(
-            "No dashboard slugs specified. Use 'dashboards discover' to see available dashboards.\n\nExample:\n  stmo-cli dashboards fetch firefox-desktop-on-steamos bug-2006698---ccov-build-regression"
+            "No dashboard slugs specified. Use 'dashboards discover' to see available dashboards.\n\nExample:\n  stmo-cli dashboards fetch example-dashboard"
         );
     }
 
@@ -226,7 +224,7 @@ fn dashboard_slugs_to_deploy(
         Ok(dashboard_slugs)
     } else {
         anyhow::bail!(
-            "No dashboard slugs specified. Use --all to deploy all tracked dashboards, or provide specific slugs.\n\nExamples:\n  stmo-cli dashboards deploy --all\n  stmo-cli dashboards deploy firefox-desktop-on-steamos bug-2006698---ccov-build-regression"
+            "No dashboard slugs specified. Use --all to deploy all tracked dashboards, or provide specific slugs.\n\nExamples:\n  stmo-cli dashboards deploy --all\n  stmo-cli dashboards deploy example-dashboard"
         );
     }
 }
@@ -599,7 +597,7 @@ async fn deploy_single_dashboard(
 pub async fn archive(client: &RedashClient, dashboard_slugs: Vec<String>) -> Result<()> {
     if dashboard_slugs.is_empty() {
         anyhow::bail!(
-            "No dashboard slugs specified.\n\nExample:\n  stmo-cli dashboards archive firefox-desktop-on-steamos bug-2006698---ccov-build-regression"
+            "No dashboard slugs specified.\n\nExample:\n  stmo-cli dashboards archive example-dashboard"
         );
     }
 
@@ -651,7 +649,7 @@ fn remove_local_dashboard_files(slug: &str, dashboards_dir: &Path) -> Result<()>
 pub async fn unarchive(client: &RedashClient, dashboard_slugs: Vec<String>) -> Result<()> {
     if dashboard_slugs.is_empty() {
         anyhow::bail!(
-            "No dashboard slugs specified.\n\nExample:\n  stmo-cli dashboards unarchive firefox-desktop-on-steamos bug-2006698---ccov-build-regression"
+            "No dashboard slugs specified.\n\nExample:\n  stmo-cli dashboards unarchive example-dashboard"
         );
     }
 
@@ -703,16 +701,16 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    const SAMPLE_DASHBOARD_ID: u64 = 9_000_000_001;
-    const SECOND_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_002;
-    const THIRD_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_003;
-    const FOURTH_SAMPLE_DASHBOARD_ID: u64 = 9_000_000_004;
-    const SAMPLE_USER_ID: u64 = 9_600_000_001;
-    const SAMPLE_WIDGET_ID: u64 = 9_100_000_001;
-    const CREATED_WIDGET_ID: u64 = 9_100_000_002;
-    const SAMPLE_VISUALIZATION_ID: u64 = 9_300_000_001;
-    const SECOND_SAMPLE_VISUALIZATION_ID: u64 = 9_300_000_002;
-    const SAMPLE_QUERY_ID: u64 = 9_200_000_001;
+    const SAMPLE_DASHBOARD_ID: u64 = 1_000_000_001;
+    const SECOND_SAMPLE_DASHBOARD_ID: u64 = 1_000_000_002;
+    const THIRD_SAMPLE_DASHBOARD_ID: u64 = 1_000_000_003;
+    const FOURTH_SAMPLE_DASHBOARD_ID: u64 = 1_000_000_004;
+    const SAMPLE_USER_ID: u64 = 1_600_000_001;
+    const SAMPLE_WIDGET_ID: u64 = 1_100_000_001;
+    const CREATED_WIDGET_ID: u64 = 1_100_000_002;
+    const SAMPLE_VISUALIZATION_ID: u64 = 1_300_000_001;
+    const SECOND_SAMPLE_VISUALIZATION_ID: u64 = 1_300_000_002;
+    const SAMPLE_QUERY_ID: u64 = 1_200_000_001;
 
     fn test_dashboard_metadata(id: u64, slug: &str) -> DashboardMetadata {
         DashboardMetadata {

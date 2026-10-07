@@ -466,7 +466,7 @@ fn resolve_mode(args: &ExecuteArgs) -> Result<ExecuteMode> {
     }
 
     bail!(
-        "No query specified. Provide a query ID (stmo-cli execute 123) \
+        "No query specified. Provide a query ID (stmo-cli execute <query-id>) \
          or run ad-hoc SQL with --file <path> --data-source <id> (or pipe SQL via stdin)."
     );
 }
@@ -528,8 +528,8 @@ mod tests {
 
     #[test]
     fn test_tracked_source_line_identifies_server_stored_query() {
-        let line = tracked_source_line(121_870);
-        assert!(line.contains("121870"));
+        let line = tracked_source_line(1_200_000_002);
+        assert!(line.contains("1200000002"));
         assert!(line.contains("server-stored"));
     }
 
@@ -552,19 +552,24 @@ mod tests {
 
     #[test]
     fn test_resolve_mode_query_id_only_is_tracked() {
-        let args = make_execute_args(Some(123), None, None);
+        let args = make_execute_args(Some(1_200_000_001), None, None);
         let mode = resolve_mode(&args).unwrap();
-        assert!(matches!(mode, ExecuteMode::Tracked { query_id: 123 }));
+        assert!(matches!(
+            mode,
+            ExecuteMode::Tracked {
+                query_id: 1_200_000_001
+            }
+        ));
     }
 
     #[test]
     fn test_resolve_mode_data_source_only_is_adhoc() {
-        let args = make_execute_args(None, Some(63), None);
+        let args = make_execute_args(None, Some(1_500_000_001), None);
         let mode = resolve_mode(&args).unwrap();
         assert!(matches!(
             mode,
             ExecuteMode::Adhoc {
-                data_source_id: 63,
+                data_source_id: 1_500_000_001,
                 file: None
             }
         ));
@@ -572,14 +577,14 @@ mod tests {
 
     #[test]
     fn test_resolve_mode_data_source_with_file_is_adhoc() {
-        let args = make_execute_args(None, Some(63), Some("scratch.sql"));
+        let args = make_execute_args(None, Some(1_500_000_001), Some("scratch.sql"));
         let mode = resolve_mode(&args).unwrap();
         match mode {
             ExecuteMode::Adhoc {
                 data_source_id,
                 file,
             } => {
-                assert_eq!(data_source_id, 63);
+                assert_eq!(data_source_id, 1_500_000_001);
                 assert_eq!(file.as_deref(), Some("scratch.sql"));
             }
             ExecuteMode::Tracked { .. } => panic!("expected Adhoc"),
@@ -588,14 +593,14 @@ mod tests {
 
     #[test]
     fn test_resolve_mode_query_id_and_data_source_errors() {
-        let args = make_execute_args(Some(123), Some(63), None);
+        let args = make_execute_args(Some(1_200_000_001), Some(1_500_000_001), None);
         let err = resolve_mode(&args).unwrap_err();
         assert!(err.to_string().contains("--data-source"));
     }
 
     #[test]
     fn test_resolve_mode_query_id_and_file_errors() {
-        let args = make_execute_args(Some(123), None, Some("scratch.sql"));
+        let args = make_execute_args(Some(1_200_000_001), None, Some("scratch.sql"));
         let err = resolve_mode(&args).unwrap_err();
         assert!(err.to_string().contains("--file"));
     }
@@ -686,7 +691,7 @@ mod tests {
     #[test]
     fn test_format_results_json() {
         let result = QueryResult {
-            id: 1,
+            id: 1_400_000_001,
             data: QueryResultData {
                 columns: vec![
                     Column {
@@ -721,7 +726,7 @@ mod tests {
     #[test]
     fn test_format_results_json_with_limit() {
         let result = QueryResult {
-            id: 1,
+            id: 1_400_000_001,
             data: QueryResultData {
                 columns: vec![Column {
                     name: "col1".to_string(),
@@ -747,7 +752,7 @@ mod tests {
     #[test]
     fn test_format_results_table() {
         let result = QueryResult {
-            id: 1,
+            id: 1_400_000_001,
             data: QueryResultData {
                 columns: vec![
                     Column {
@@ -782,7 +787,7 @@ mod tests {
     #[test]
     fn test_format_results_table_with_limit() {
         let result = QueryResult {
-            id: 1,
+            id: 1_400_000_001,
             data: QueryResultData {
                 columns: vec![Column {
                     name: "col1".to_string(),
@@ -810,7 +815,7 @@ mod tests {
     #[test]
     fn test_format_results_table_truncation() {
         let result = QueryResult {
-            id: 1,
+            id: 1_400_000_001,
             data: QueryResultData {
                 columns: vec![Column {
                     name: "col1".to_string(),
@@ -833,7 +838,7 @@ mod tests {
     #[test]
     fn test_format_results_table_truncation_multibyte_char_boundary() {
         let result = QueryResult {
-            id: 1,
+            id: 1_400_000_001,
             data: QueryResultData {
                 columns: vec![Column {
                     name: "col1".to_string(),
@@ -913,10 +918,10 @@ mod tests {
     ) -> QueryMetadata {
         use crate::models::{Parameter, QueryOptions};
         QueryMetadata {
-            id: 1,
+            id: 1_400_000_001,
             name: "test".to_string(),
             description: None,
-            data_source_id: 1,
+            data_source_id: 1_400_000_001,
             user_id: None,
             schedule: None,
             options: QueryOptions {
@@ -1026,10 +1031,10 @@ mod tests {
     fn test_build_parameter_map_resolves_dynamic_date_range_default() {
         use crate::models::{Parameter, QueryOptions};
         let metadata = QueryMetadata {
-            id: 1,
+            id: 1_400_000_001,
             name: "test".to_string(),
             description: None,
-            data_source_id: 1,
+            data_source_id: 1_400_000_001,
             user_id: None,
             schedule: None,
             options: QueryOptions {

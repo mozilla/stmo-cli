@@ -447,10 +447,10 @@ mod tests {
     #[test]
     fn test_validate_enum_options_rejects_escaped_newlines() {
         let metadata = crate::models::QueryMetadata {
-            id: 1,
+            id: 1_200_000_001,
             name: "Test Query".to_string(),
             description: None,
-            data_source_id: 1,
+            data_source_id: 1_200_000_001,
             user_id: None,
             schedule: None,
             options: crate::models::QueryOptions {
@@ -479,10 +479,10 @@ mod tests {
     #[test]
     fn test_validate_enum_options_accepts_multiline() {
         let metadata = crate::models::QueryMetadata {
-            id: 1,
+            id: 1_200_000_001,
             name: "Test Query".to_string(),
             description: None,
-            data_source_id: 1,
+            data_source_id: 1_200_000_001,
             user_id: None,
             schedule: None,
             options: crate::models::QueryOptions {
@@ -507,10 +507,10 @@ mod tests {
     #[test]
     fn test_validate_enum_options_accepts_no_enum() {
         let metadata = crate::models::QueryMetadata {
-            id: 1,
+            id: 1_200_000_001,
             name: "Test Query".to_string(),
             description: None,
-            data_source_id: 1,
+            data_source_id: 1_200_000_001,
             user_id: None,
             schedule: None,
             options: crate::models::QueryOptions {
@@ -534,7 +534,7 @@ mod tests {
 
     fn make_query_metadata(name: &str, data_source_id: u64) -> QueryMetadata {
         QueryMetadata {
-            id: 1,
+            id: 1_200_000_001,
             name: name.to_string(),
             description: None,
             data_source_id,
@@ -548,7 +548,7 @@ mod tests {
 
     fn make_server_query(sql: &str, name: &str, data_source_id: u64) -> Query {
         Query {
-            id: 1,
+            id: 1_200_000_001,
             name: name.to_string(),
             description: None,
             sql: sql.to_string(),
@@ -706,7 +706,7 @@ mod tests {
     }
 
     const MINIMAL_QUERY_METADATA_YAML: &str =
-        "data_source_id: 1\noptions:\n  parameters: []\nvisualizations: []\n";
+        "data_source_id: 1500000001\noptions:\n  parameters: []\nvisualizations: []\n";
 
     #[test]
     fn test_get_all_query_metadata_from_path_basic() {
@@ -714,13 +714,13 @@ mod tests {
         let dir = temp_dir.path();
 
         fs::write(
-            dir.join("42-my-query.yaml"),
-            format!("id: 42\nname: my-query\n{MINIMAL_QUERY_METADATA_YAML}"),
+            dir.join("1200000001-my-query.yaml"),
+            format!("id: 1200000001\nname: my-query\n{MINIMAL_QUERY_METADATA_YAML}"),
         )
         .unwrap();
 
         let metadata = get_all_query_metadata_from_path(dir).unwrap();
-        assert_eq!(metadata, vec![(42, "my-query".to_string())]);
+        assert_eq!(metadata, vec![(1_200_000_001, "my-query".to_string())]);
     }
 
     #[test]
@@ -790,13 +790,13 @@ mod tests {
         let dir = temp_dir.path();
 
         fs::write(
-            dir.join("120506-my-query.yaml"),
-            format!("id: 120506\nname: My Query\n{MINIMAL_QUERY_METADATA_YAML}"),
+            dir.join("1200000001-example-query.yaml"),
+            format!("id: 1200000001\nname: Example Query\n{MINIMAL_QUERY_METADATA_YAML}"),
         )
         .unwrap();
 
         let metadata = get_all_query_metadata_from_path(dir).unwrap();
-        assert_eq!(metadata, vec![(120_506, "My Query".to_string())]);
+        assert_eq!(metadata, vec![(1_200_000_001, "Example Query".to_string())]);
     }
 
     #[test]
@@ -805,15 +805,13 @@ mod tests {
         let dir = temp_dir.path();
 
         fs::write(
-            dir.join("120506-claude-code-direct-reports-model-mix.yaml"),
-            format!(
-                "id: 120506\nname: claude-code-direct-reports-model-mix\n{MINIMAL_QUERY_METADATA_YAML}"
-            ),
+            dir.join("1200000001-first-example-query.yaml"),
+            format!("id: 1200000001\nname: First Example Query\n{MINIMAL_QUERY_METADATA_YAML}"),
         )
         .unwrap();
         fs::write(
-            dir.join("120506-claude-code-user-model-mix.yaml"),
-            format!("id: 120506\nname: claude-code-user-model-mix\n{MINIMAL_QUERY_METADATA_YAML}"),
+            dir.join("1200000001-second-example-query.yaml"),
+            format!("id: 1200000001\nname: Second Example Query\n{MINIMAL_QUERY_METADATA_YAML}"),
         )
         .unwrap();
 
@@ -821,8 +819,8 @@ mod tests {
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Multiple local files resolve to the same target"));
-        assert!(err_msg.contains("id 120506"));
-        assert!(err_msg.contains("claude-code-direct-reports-model-mix.yaml"));
-        assert!(err_msg.contains("claude-code-user-model-mix.yaml"));
+        assert!(err_msg.contains("id 1200000001"));
+        assert!(err_msg.contains("first-example-query.yaml"));
+        assert!(err_msg.contains("second-example-query.yaml"));
     }
 }

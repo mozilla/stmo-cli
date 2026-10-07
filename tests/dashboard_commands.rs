@@ -11,11 +11,11 @@ use tempfile::TempDir;
 use tokio::sync::Mutex;
 use wiremock::{Mock, Request, Respond, ResponseTemplate};
 
-const SOURCE_QUERY_ID: u64 = 9_200_000_101;
-const TARGET_QUERY_ID: u64 = 9_200_000_102;
-const SOURCE_VISUALIZATION_ID: u64 = 9_300_000_101;
-const TARGET_VISUALIZATION_ID: u64 = 9_300_000_102;
-const TABLE_VISUALIZATION_ID: u64 = 9_300_000_103;
+const SOURCE_QUERY_ID: u64 = 1_200_000_101;
+const TARGET_QUERY_ID: u64 = 1_200_000_102;
+const SOURCE_VISUALIZATION_ID: u64 = 1_300_000_101;
+const TARGET_VISUALIZATION_ID: u64 = 1_300_000_102;
+const TABLE_VISUALIZATION_ID: u64 = 1_300_000_103;
 
 struct DashboardStateResponder {
     dashboard_id: u64,

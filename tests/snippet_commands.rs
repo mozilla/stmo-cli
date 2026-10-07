@@ -100,7 +100,7 @@ async fn test_get_query_snippet() {
 async fn test_create_query_snippet() {
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_create_query_snippet(42, "stmo_cli_selftest", "SELECT 1")
+    mock_create_query_snippet(1_700_000_001, "stmo_cli_selftest", "SELECT 1")
         .mount(&mock_server)
         .await;
 
@@ -112,7 +112,7 @@ async fn test_create_query_snippet() {
     };
     let snippet = client.create_query_snippet(&create).await.unwrap();
 
-    assert_eq!(snippet.id, 42);
+    assert_eq!(snippet.id, 1_700_000_001);
     assert_eq!(snippet.trigger, "stmo_cli_selftest");
 }
 
@@ -148,10 +148,12 @@ async fn test_update_query_snippet() {
 async fn test_delete_query_snippet() {
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_delete_query_snippet(42).mount(&mock_server).await;
+    mock_delete_query_snippet(1_700_000_001)
+        .mount(&mock_server)
+        .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = client.delete_query_snippet(42).await;
+    let result = client.delete_query_snippet(1_700_000_001).await;
 
     assert!(result.is_ok());
 }
@@ -160,12 +162,12 @@ async fn test_delete_query_snippet() {
 async fn test_delete_query_snippet_not_found() {
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_delete_query_snippet_not_found(999)
+    mock_delete_query_snippet_not_found(1_700_000_002)
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = client.delete_query_snippet(999).await;
+    let result = client.delete_query_snippet(1_700_000_002).await;
 
     assert!(result.is_err());
 }
@@ -238,7 +240,7 @@ async fn test_deploy_new_snippet_with_id_zero() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_create_query_snippet(42, "stmo_cli_selftest", "SELECT 1")
+    mock_create_query_snippet(1_700_000_001, "stmo_cli_selftest", "SELECT 1")
         .mount(&mock_server)
         .await;
 
@@ -257,8 +259,8 @@ async fn test_deploy_new_snippet_with_id_zero() {
     assert!(result.is_ok());
     assert!(!std::path::Path::new("snippets/0-stmo_cli_selftest.sql").exists());
     assert!(!std::path::Path::new("snippets/0-stmo_cli_selftest.yaml").exists());
-    assert!(std::path::Path::new("snippets/42-stmo_cli_selftest.sql").exists());
-    assert!(std::path::Path::new("snippets/42-stmo_cli_selftest.yaml").exists());
+    assert!(std::path::Path::new("snippets/1700000001-stmo_cli_selftest.sql").exists());
+    assert!(std::path::Path::new("snippets/1700000001-stmo_cli_selftest.yaml").exists());
 }
 
 #[tokio::test]
@@ -267,7 +269,7 @@ async fn test_deploy_creates_several_new_snippets_in_one_run() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_create_query_snippet_with_trigger(42, "first_trigger", "SELECT 1")
+    mock_create_query_snippet_with_trigger(1_700_000_001, "first_trigger", "SELECT 1")
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -300,8 +302,8 @@ async fn test_deploy_creates_several_new_snippets_in_one_run() {
     assert!(result.is_ok(), "{:?}", result.unwrap_err());
     assert!(!std::path::Path::new("snippets/0-first_trigger.yaml").exists());
     assert!(!std::path::Path::new("snippets/0-second_trigger.yaml").exists());
-    assert!(std::path::Path::new("snippets/42-first_trigger.sql").exists());
-    assert!(std::path::Path::new("snippets/42-first_trigger.yaml").exists());
+    assert!(std::path::Path::new("snippets/1700000001-first_trigger.sql").exists());
+    assert!(std::path::Path::new("snippets/1700000001-first_trigger.yaml").exists());
     assert!(std::path::Path::new("snippets/43-second_trigger.sql").exists());
     assert!(std::path::Path::new("snippets/43-second_trigger.yaml").exists());
 
@@ -349,23 +351,25 @@ async fn test_delete_command_removes_remote_and_local_files() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_delete_query_snippet(42).mount(&mock_server).await;
+    mock_delete_query_snippet(1_700_000_001)
+        .mount(&mock_server)
+        .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
     std::fs::create_dir_all("snippets").unwrap();
-    std::fs::write("snippets/42-stmo_cli_selftest.sql", "SELECT 1").unwrap();
+    std::fs::write("snippets/1700000001-stmo_cli_selftest.sql", "SELECT 1").unwrap();
     std::fs::write(
-        "snippets/42-stmo_cli_selftest.yaml",
-        "id: 42\ntrigger: stmo_cli_selftest\ndescription: Self-test snippet\n",
+        "snippets/1700000001-stmo_cli_selftest.yaml",
+        "id: 1700000001\ntrigger: stmo_cli_selftest\ndescription: Self-test snippet\n",
     )
     .unwrap();
 
-    let result = stmo_cli::commands::snippets::delete(&client, vec![42]).await;
+    let result = stmo_cli::commands::snippets::delete(&client, vec![1_700_000_001]).await;
 
     assert!(result.is_ok());
-    assert!(!std::path::Path::new("snippets/42-stmo_cli_selftest.sql").exists());
-    assert!(!std::path::Path::new("snippets/42-stmo_cli_selftest.yaml").exists());
+    assert!(!std::path::Path::new("snippets/1700000001-stmo_cli_selftest.sql").exists());
+    assert!(!std::path::Path::new("snippets/1700000001-stmo_cli_selftest.yaml").exists());
 }
 
 #[tokio::test]
@@ -457,7 +461,7 @@ async fn test_fetch_partial_failure_writes_successful_and_warns() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_get_query_snippet_not_found(999)
+    mock_get_query_snippet_not_found(1_700_000_002)
         .mount(&mock_server)
         .await;
     mock_get_query_snippet(
@@ -469,7 +473,8 @@ async fn test_fetch_partial_failure_writes_successful_and_warns() {
     .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
-    let result = stmo_cli::commands::snippets::fetch(&client, vec![999, 900_000_001], false).await;
+    let result =
+        stmo_cli::commands::snippets::fetch(&client, vec![1_700_000_002, 900_000_001], false).await;
 
     // Matches queries' fetch.rs convention: partial failures are warned about via
     // stderr and skipped, not surfaced as an overall error (unlike dashboards::fetch).
@@ -479,7 +484,11 @@ async fn test_fetch_partial_failure_writes_successful_and_warns() {
         !std::path::Path::new("snippets")
             .read_dir()
             .unwrap()
-            .any(|e| e.unwrap().file_name().to_string_lossy().starts_with("999-"))
+            .any(|e| e
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("1700000002-"))
     );
 }
 
@@ -499,7 +508,7 @@ async fn test_deploy_bails_when_no_matching_ids() {
     )
     .unwrap();
 
-    let result = stmo_cli::commands::snippets::deploy(&client, vec![999], false).await;
+    let result = stmo_cli::commands::snippets::deploy(&client, vec![1_700_000_002], false).await;
 
     assert!(result.is_err());
     assert!(
@@ -695,26 +704,33 @@ async fn test_delete_partial_failure_bails_but_removes_successful_local_files() 
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_delete_query_snippet(42).mount(&mock_server).await;
-    mock_delete_query_snippet_not_found(999)
+    mock_delete_query_snippet(1_700_000_001)
+        .mount(&mock_server)
+        .await;
+    mock_delete_query_snippet_not_found(1_700_000_002)
         .mount(&mock_server)
         .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
     std::fs::create_dir_all("snippets").unwrap();
-    std::fs::write("snippets/42-stmo_cli_selftest.sql", "SELECT 1").unwrap();
-    std::fs::write("snippets/42-stmo_cli_selftest.yaml", "id: 42").unwrap();
-    std::fs::write("snippets/999-doomed.sql", "SELECT 1").unwrap();
-    std::fs::write("snippets/999-doomed.yaml", "id: 999").unwrap();
+    std::fs::write("snippets/1700000001-stmo_cli_selftest.sql", "SELECT 1").unwrap();
+    std::fs::write(
+        "snippets/1700000001-stmo_cli_selftest.yaml",
+        "id: 1700000001",
+    )
+    .unwrap();
+    std::fs::write("snippets/1700000002-doomed.sql", "SELECT 1").unwrap();
+    std::fs::write("snippets/1700000002-doomed.yaml", "id: 1700000002").unwrap();
 
-    let result = stmo_cli::commands::snippets::delete(&client, vec![42, 999]).await;
+    let result =
+        stmo_cli::commands::snippets::delete(&client, vec![1_700_000_001, 1_700_000_002]).await;
 
     assert!(result.is_err());
-    assert!(!std::path::Path::new("snippets/42-stmo_cli_selftest.sql").exists());
-    assert!(!std::path::Path::new("snippets/42-stmo_cli_selftest.yaml").exists());
-    assert!(std::path::Path::new("snippets/999-doomed.sql").exists());
-    assert!(std::path::Path::new("snippets/999-doomed.yaml").exists());
+    assert!(!std::path::Path::new("snippets/1700000001-stmo_cli_selftest.sql").exists());
+    assert!(!std::path::Path::new("snippets/1700000001-stmo_cli_selftest.yaml").exists());
+    assert!(std::path::Path::new("snippets/1700000002-doomed.sql").exists());
+    assert!(std::path::Path::new("snippets/1700000002-doomed.yaml").exists());
 }
 
 #[tokio::test]
@@ -723,11 +739,13 @@ async fn test_delete_succeeds_when_no_local_files_found() {
     let _temp_dir = TempWorkDir::new();
     let mock_server = wiremock::MockServer::start().await;
 
-    mock_delete_query_snippet(42).mount(&mock_server).await;
+    mock_delete_query_snippet(1_700_000_001)
+        .mount(&mock_server)
+        .await;
 
     let client = RedashClient::new(mock_server.uri(), "test-key").unwrap();
 
-    let result = stmo_cli::commands::snippets::delete(&client, vec![42]).await;
+    let result = stmo_cli::commands::snippets::delete(&client, vec![1_700_000_001]).await;
 
     assert!(result.is_ok());
 }
