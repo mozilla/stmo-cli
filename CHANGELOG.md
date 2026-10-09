@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixes
+- `deploy`: reject a query's `schedule.time` that isn't `HH:MM` (e.g. `720` or `24:00`) before anything is sent to Redash, naming the file and the bad value, instead of deploying an invalid schedule
+
 ## [0.12.0] - 2026-10-06
 
 ### Features
