@@ -563,6 +563,54 @@ async fn update_dashboard_settings(
     Ok(())
 }
 
+fn is_missing_or_null_widget_id(path: &str, message: &str) -> bool {
+    path.starts_with("widgets[")
+        && (message.contains("missing field `id`") || message.contains("unit value"))
+}
+
+fn widget_id_location(path: &str) -> String {
+    match path.strip_suffix(".id") {
+        Some(_) => path.to_owned(),
+        None => format!("{path}.id"),
+    }
+}
+
+fn explain_parse_error(error: &serde_path_to_error::Error<serde_yaml::Error>) -> String {
+    let path = error.path().to_string();
+    let message = error.inner().to_string();
+    if is_missing_or_null_widget_id(&path, &message) {
+        return format!(
+            "{}: missing or null id (use `id: 0` for a new widget)",
+            widget_id_location(&path)
+        );
+    }
+    message
+}
+
+fn parse_dashboard_yaml(path: &Path, yaml: &str) -> Result<DashboardMetadata> {
+    let metadata: DashboardMetadata = serde_path_to_error::deserialize(
+        serde_yaml::Deserializer::from_str(yaml),
+    )
+    .map_err(|error| {
+        anyhow::anyhow!(
+            "Failed to parse {}: {}",
+            path.display(),
+            explain_parse_error(&error)
+        )
+    })?;
+
+    let violations: Vec<String> = metadata
+        .widgets
+        .iter()
+        .enumerate()
+        .flat_map(|(index, widget)| widget.validate(index))
+        .collect();
+    if !violations.is_empty() {
+        anyhow::bail!("Invalid {}:\n  {}", path.display(), violations.join("\n  "));
+    }
+    Ok(metadata)
+}
+
 async fn deploy_single_dashboard(
     client: &RedashClient,
     dashboard_slug: &str,
@@ -572,8 +620,7 @@ async fn deploy_single_dashboard(
     let yaml_content = fs::read_to_string(&yaml_path)
         .context(format!("Failed to read {}", yaml_path.display()))?;
 
-    let local_metadata: DashboardMetadata =
-        serde_yaml::from_str(&yaml_content).context("Failed to parse dashboard YAML")?;
+    let local_metadata = parse_dashboard_yaml(&yaml_path, &yaml_content)?;
 
     let target =
         prepare_dashboard_deployment(client, dashboard_slug, &yaml_path, &local_metadata).await?;
@@ -975,6 +1022,143 @@ mod tests {
 
         assert_eq!(success_count, 0);
         assert_eq!(failed_slugs, ["first", "second"]);
+    }
+
+    const WIDGET_POSITION: &str = "    options:\n      position:\n        col: 0\n        row: 0\n        sizeX: 3\n        sizeY: 2\n";
+
+    fn dashboard_yaml_with_widgets(widgets: &str) -> String {
+        format!(
+            "id: 900000001\nname: Test\nslug: test\nuser_id: 900000002\nis_draft: false\nis_archived: false\ndashboard_filters_enabled: false\ntags: []\nwidgets:\n{widgets}"
+        )
+    }
+
+    fn parse_error(yaml: &str) -> String {
+        parse_dashboard_yaml(Path::new("dashboards/1-test.yaml"), yaml)
+            .unwrap_err()
+            .to_string()
+    }
+
+    #[test]
+    fn parse_dashboard_yaml_hints_zero_id_when_widget_id_missing() {
+        let yaml = dashboard_yaml_with_widgets(&format!(
+            "  - width: 1\n    text: hello\n{WIDGET_POSITION}"
+        ));
+
+        let error = parse_error(&yaml);
+
+        assert!(error.contains("widgets[0].id"), "{error}");
+        assert!(error.contains("use `id: 0` for a new widget"), "{error}");
+    }
+
+    #[test]
+    fn parse_dashboard_yaml_hints_zero_id_when_widget_id_null() {
+        let yaml = dashboard_yaml_with_widgets(&format!(
+            "  - id: null\n    width: 1\n    text: hello\n{WIDGET_POSITION}"
+        ));
+
+        let error = parse_error(&yaml);
+
+        assert!(error.contains("widgets[0].id"), "{error}");
+        assert!(error.contains("use `id: 0` for a new widget"), "{error}");
+    }
+
+    #[test]
+    fn parse_dashboard_yaml_accepts_new_widget_with_zero_id() {
+        let yaml = dashboard_yaml_with_widgets(&format!(
+            "  - id: 0\n    width: 1\n    text: hello\n{WIDGET_POSITION}"
+        ));
+
+        let metadata = parse_dashboard_yaml(Path::new("dashboards/1-test.yaml"), &yaml).unwrap();
+
+        assert_eq!(metadata.widgets[0].id, 0);
+    }
+
+    #[test]
+    fn parse_dashboard_yaml_passes_through_unrelated_errors() {
+        let yaml = "id: 900000001\nslug: test\nuser_id: 900000002\nis_draft: false\nis_archived: false\ndashboard_filters_enabled: false\ntags: []\nwidgets: []\n";
+
+        let error = parse_error(yaml);
+
+        assert!(error.contains("missing field `name`"), "{error}");
+        assert!(!error.contains("use `id: 0`"), "{error}");
+    }
+
+    #[test]
+    fn parse_dashboard_yaml_rejects_widget_without_content_source() {
+        let yaml =
+            dashboard_yaml_with_widgets(&format!("  - id: 0\n    width: 1\n{WIDGET_POSITION}"));
+
+        let error = parse_error(&yaml);
+
+        assert!(error.contains("widgets[0]"), "{error}");
+        assert!(
+            error.contains("needs text, visualization_id, or query_id with visualization_name"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn parse_dashboard_yaml_rejects_visualization_name_without_query_id() {
+        let yaml = dashboard_yaml_with_widgets(&format!(
+            "  - id: 0\n    text: hello\n    visualization_name: Table\n{WIDGET_POSITION}"
+        ));
+
+        let error = parse_error(&yaml);
+
+        assert!(
+            error.contains("visualization_name requires query_id"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn parse_dashboard_yaml_rejects_query_id_without_visualization_name() {
+        let yaml = dashboard_yaml_with_widgets(&format!(
+            "  - id: 0\n    query_id: 900000005\n{WIDGET_POSITION}"
+        ));
+
+        let error = parse_error(&yaml);
+
+        assert!(
+            error.contains("query_id requires visualization_name"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn parse_dashboard_yaml_reports_every_invalid_widget() {
+        let yaml = dashboard_yaml_with_widgets(&format!(
+            "  - id: 0\n    width: 1\n{WIDGET_POSITION}  - id: 0\n    width: 1\n{WIDGET_POSITION}"
+        ));
+
+        let error = parse_error(&yaml);
+
+        assert!(error.contains("widgets[0]"), "{error}");
+        assert!(error.contains("widgets[1]"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn deploy_rejects_invalid_yaml_before_any_api_call() {
+        let mock_server = MockServer::start().await;
+        let dashboards_dir = TempDir::new().unwrap();
+        fs::write(
+            dashboards_dir
+                .path()
+                .join(format!("{SAMPLE_DASHBOARD_ID}-test.yaml")),
+            dashboard_yaml_with_widgets(&format!(
+                "  - width: 1\n    text: hello\n{WIDGET_POSITION}"
+            )),
+        )
+        .unwrap();
+
+        let error =
+            deploy_single_dashboard(&test_client(&mock_server), "test", dashboards_dir.path())
+                .await
+                .unwrap_err()
+                .to_string();
+
+        assert!(error.contains("use `id: 0` for a new widget"), "{error}");
+        assert!(mock_server.received_requests().await.unwrap().is_empty());
     }
 
     #[test]

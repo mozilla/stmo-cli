@@ -36,6 +36,7 @@ anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 dialoguer = "0.12"
 moz-cli-version-check = "0.2.4"
+serde_path_to_error = "0.1"
 
 [dev-dependencies]
 wiremock = "0.6"

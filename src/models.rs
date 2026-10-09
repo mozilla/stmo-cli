@@ -462,6 +462,35 @@ pub struct WidgetMetadata {
     pub options: WidgetOptions,
 }
 
+impl WidgetMetadata {
+    #[must_use]
+    pub fn validate(&self, index: usize) -> Vec<String> {
+        let mut violations = Vec::new();
+        if !self.has_content() {
+            violations.push(format!(
+                "widgets[{index}]: needs text, visualization_id, or query_id with visualization_name"
+            ));
+        }
+        if self.visualization_name.is_some() && self.query_id.is_none() {
+            violations.push(format!(
+                "widgets[{index}]: visualization_name requires query_id"
+            ));
+        }
+        if self.query_id.is_some() && self.visualization_name.is_none() {
+            violations.push(format!(
+                "widgets[{index}]: query_id requires visualization_name"
+            ));
+        }
+        violations
+    }
+
+    fn has_content(&self) -> bool {
+        !self.text.is_empty()
+            || self.visualization_id.is_some()
+            || (self.query_id.is_some() && self.visualization_name.is_some())
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct DashboardsResponse {
     pub results: Vec<DashboardSummary>,
