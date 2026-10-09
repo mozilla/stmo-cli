@@ -3,7 +3,7 @@ members = ["xtask"]
 
 [package]
 name = "stmo-cli"
-version = "0.12.0"
+version = "0.12.1"
 edition = "2024"
 description = "Turn AI coding assistants into data analysts on sql.telemetry.mozilla.org"
 license = "MPL-2.0"
