@@ -37,6 +37,20 @@ fn validate_enum_options(metadata: &crate::models::QueryMetadata, yaml_path: &st
     Ok(())
 }
 
+fn is_valid_hh_mm(time: &str) -> bool {
+    time.len() == 5 && chrono::NaiveTime::parse_from_str(time, "%H:%M").is_ok()
+}
+
+fn validate_schedule_time(metadata: &crate::models::QueryMetadata, yaml_path: &str) -> Result<()> {
+    let Some(time) = metadata.schedule.as_ref().and_then(|s| s.time.as_deref()) else {
+        return Ok(());
+    };
+    if !is_valid_hh_mm(time) {
+        bail!("In {yaml_path}: schedule time '{time}' is not HH:MM.");
+    }
+    Ok(())
+}
+
 // A local visualization with no `id` is an unsaved one the user is asking to
 // create — it always counts as "different" regardless of what's on the
 // server.
@@ -322,6 +336,7 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
         serde_yaml::from_str(&metadata_content).context(format!("Failed to parse {yaml_path}"))?;
 
     validate_enum_options(&metadata, &yaml_path)?;
+    validate_schedule_time(&metadata, &yaml_path)?;
 
     let (result_query, final_yaml_path) = if id == 0 {
         let create_query = crate::models::CreateQuery {
@@ -474,6 +489,56 @@ mod tests {
         assert!(err_msg.contains("escaped newlines"));
         assert!(err_msg.contains("test_param"));
         assert!(err_msg.contains("YAML multiline format"));
+    }
+
+    fn metadata_with_schedule_time(time: Option<&str>) -> crate::models::QueryMetadata {
+        let mut metadata = make_query_metadata("Scheduled", 1);
+        metadata.schedule = Some(crate::models::Schedule {
+            interval: Some(86400),
+            time: time.map(str::to_string),
+            day_of_week: None,
+            until: None,
+        });
+        metadata
+    }
+
+    #[test]
+    fn test_validate_schedule_time_accepts_hh_mm() {
+        for time in ["07:15", "00:00", "23:59"] {
+            let metadata = metadata_with_schedule_time(Some(time));
+            assert!(
+                validate_schedule_time(&metadata, "test.yaml").is_ok(),
+                "{time}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_schedule_time_accepts_missing_time() {
+        let metadata = metadata_with_schedule_time(None);
+        assert!(validate_schedule_time(&metadata, "test.yaml").is_ok());
+
+        let metadata = make_query_metadata("Unscheduled", 1);
+        assert!(validate_schedule_time(&metadata, "test.yaml").is_ok());
+    }
+
+    #[test]
+    fn test_validate_schedule_time_rejects_malformed_time() {
+        for time in ["720", "7:15", "24:00", "12:60", "12:00:00", "", "1a:00"] {
+            let metadata = metadata_with_schedule_time(Some(time));
+            let result = validate_schedule_time(&metadata, "test.yaml");
+            assert!(result.is_err(), "{time:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn test_validate_schedule_time_error_names_file_and_value() {
+        let metadata = metadata_with_schedule_time(Some("720"));
+        let err_msg = validate_schedule_time(&metadata, "queries/1-bad.yaml")
+            .unwrap_err()
+            .to_string();
+        assert!(err_msg.contains("queries/1-bad.yaml"));
+        assert!(err_msg.contains("'720'"));
     }
 
     #[test]
