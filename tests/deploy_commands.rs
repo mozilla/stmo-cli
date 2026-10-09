@@ -77,15 +77,15 @@ async fn test_deploy_new_query_with_id_zero() {
     );
 
     assert!(
-        std::path::Path::new("queries/1200000001-test-query.sql").exists(),
+        std::path::Path::new("queries/1200000001.sql").exists(),
         "New SQL file with server ID should be created"
     );
     assert!(
-        std::path::Path::new("queries/1200000001-test-query.yaml").exists(),
+        std::path::Path::new("queries/1200000001.yaml").exists(),
         "New YAML file with server ID should be created"
     );
 
-    let yaml_content = std::fs::read_to_string("queries/1200000001-test-query.yaml").unwrap();
+    let yaml_content = std::fs::read_to_string("queries/1200000001.yaml").unwrap();
     assert!(
         yaml_content.contains("id: 1200000001"),
         "YAML should contain the new ID"
@@ -124,10 +124,10 @@ async fn test_deploy_creates_several_new_queries_in_one_run() {
     assert!(result.is_ok(), "{:?}", result.unwrap_err());
     assert!(!std::path::Path::new("queries/0-first-query.yaml").exists());
     assert!(!std::path::Path::new("queries/0-second-query.yaml").exists());
-    assert!(std::path::Path::new("queries/1200000001-first-query.sql").exists());
-    assert!(std::path::Path::new("queries/1200000001-first-query.yaml").exists());
-    assert!(std::path::Path::new("queries/1200000002-second-query.sql").exists());
-    assert!(std::path::Path::new("queries/1200000002-second-query.yaml").exists());
+    assert!(std::path::Path::new("queries/1200000001.sql").exists());
+    assert!(std::path::Path::new("queries/1200000001.yaml").exists());
+    assert!(std::path::Path::new("queries/1200000002.sql").exists());
+    assert!(std::path::Path::new("queries/1200000002.yaml").exists());
 
     mock_server.verify().await;
 }
@@ -166,7 +166,7 @@ async fn test_deploy_bare_always_includes_id_zero() {
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
     assert!(
-        std::path::Path::new("queries/1200000001-new-query.sql").exists(),
+        std::path::Path::new("queries/1200000001.sql").exists(),
         "New query should be created and renamed to its server ID"
     );
 }
@@ -290,7 +290,7 @@ async fn test_deploy_writes_back_newly_created_viz() {
     let result = stmo_cli::commands::deploy::deploy(&client, vec![1_200_000_001], false).await;
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
-    let yaml = std::fs::read_to_string("queries/1200000001-test-query.yaml").unwrap();
+    let yaml = std::fs::read_to_string("queries/1200000001.yaml").unwrap();
     let metadata: stmo_cli::models::QueryMetadata = serde_yaml::from_str(&yaml).unwrap();
 
     let created = metadata
@@ -327,7 +327,7 @@ async fn test_deploy_writes_back_local_options_for_matched_viz() {
     let result = stmo_cli::commands::deploy::deploy(&client, vec![1_200_000_001], false).await;
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
-    let yaml = std::fs::read_to_string("queries/1200000001-test-query.yaml").unwrap();
+    let yaml = std::fs::read_to_string("queries/1200000001.yaml").unwrap();
     let metadata: stmo_cli::models::QueryMetadata = serde_yaml::from_str(&yaml).unwrap();
 
     let matched = metadata
@@ -364,7 +364,7 @@ async fn test_deploy_new_query_writes_back_created_viz() {
     let result = stmo_cli::commands::deploy::deploy(&client, vec![0], false).await;
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
-    let yaml = std::fs::read_to_string("queries/1200000001-new-query.yaml").unwrap();
+    let yaml = std::fs::read_to_string("queries/1200000001.yaml").unwrap();
     let metadata: stmo_cli::models::QueryMetadata = serde_yaml::from_str(&yaml).unwrap();
 
     assert!(

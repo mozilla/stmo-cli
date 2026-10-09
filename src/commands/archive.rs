@@ -7,36 +7,22 @@ use std::path::Path;
 use crate::api::RedashClient;
 
 fn find_query_files(query_id: u64) -> Result<Option<(String, String)>> {
-    let queries_dir = Path::new("queries");
+    find_query_files_in(Path::new("queries"), query_id)
+}
 
-    if !queries_dir.exists() {
+fn find_query_files_in(queries_dir: &Path, query_id: u64) -> Result<Option<(String, String)>> {
+    let Some(file_set) = crate::commands::unique_query_file_set_by_id(queries_dir, query_id)?
+    else {
         return Ok(None);
-    }
+    };
+    let (Some(sql_path), Some(yaml_path)) = (file_set.sql, file_set.yaml) else {
+        return Ok(None);
+    };
 
-    let mut sql_path = None;
-    let mut yaml_path = None;
-
-    for entry in fs::read_dir(queries_dir).context("Failed to read queries directory")? {
-        let entry = entry.context("Failed to read directory entry")?;
-        let path = entry.path();
-
-        if let Some(filename) = path.file_name().and_then(|f| f.to_str())
-            && let Some(id_str) = filename.split('-').next()
-            && let Ok(id) = id_str.parse::<u64>()
-            && id == query_id
-        {
-            if path.extension().is_some_and(|ext| ext == "sql") {
-                sql_path = Some(path.to_string_lossy().to_string());
-            } else if path.extension().is_some_and(|ext| ext == "yaml") {
-                yaml_path = Some(path.to_string_lossy().to_string());
-            }
-        }
-    }
-
-    match (sql_path, yaml_path) {
-        (Some(sql), Some(yaml)) => Ok(Some((sql, yaml))),
-        _ => Ok(None),
-    }
+    Ok(Some((
+        sql_path.to_string_lossy().to_string(),
+        yaml_path.to_string_lossy().to_string(),
+    )))
 }
 
 fn delete_query_files(sql_path: &str, yaml_path: &str) -> Result<()> {
@@ -52,11 +38,12 @@ pub async fn archive(client: &RedashClient, query_ids: Vec<u64>) -> Result<()> {
     println!("Archiving {} queries...\n", query_ids.len());
 
     for query_id in &query_ids {
+        let local_files = find_query_files(*query_id)?;
         match client.archive_query(*query_id).await {
             Ok(query) => {
                 println!("  ✓ Archived query {query_id} - {}", query.name);
 
-                if let Ok(Some((sql_path, yaml_path))) = find_query_files(*query_id) {
+                if let Some((sql_path, yaml_path)) = local_files {
                     if let Err(e) = delete_query_files(&sql_path, &yaml_path) {
                         eprintln!("  ⚠ Failed to delete local files for query {query_id}: {e}");
                     } else {
@@ -99,9 +86,8 @@ pub async fn cleanup(client: &RedashClient) -> Result<()> {
         let path = entry.path();
 
         if path.extension().is_some_and(|ext| ext == "yaml")
-            && let Some(filename) = path.file_name().and_then(|f| f.to_str())
-            && let Some(id_str) = filename.split('-').next()
-            && let Ok(id) = id_str.parse::<u64>()
+            && let Some(id) = crate::commands::query_id_from_path(&path)
+            && id != 0
         {
             query_ids.push(id);
         }
@@ -129,13 +115,20 @@ pub async fn cleanup(client: &RedashClient) -> Result<()> {
                 if query.is_archived {
                     println!("  Found archived query {query_id} - {}", query.name);
 
-                    if let Ok(Some((sql_path, yaml_path))) = find_query_files(*query_id) {
-                        if let Err(e) = delete_query_files(&sql_path, &yaml_path) {
-                            eprintln!("    ✗ Failed to delete files: {e}");
+                    match find_query_files(*query_id) {
+                        Ok(Some((sql_path, yaml_path))) => {
+                            if let Err(e) = delete_query_files(&sql_path, &yaml_path) {
+                                eprintln!("    ✗ Failed to delete files: {e}");
+                                errors.push((*query_id, e));
+                            } else {
+                                println!("    ✓ Deleted local files");
+                                cleaned_count += 1;
+                            }
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            eprintln!("    ✗ Failed to locate local files: {e}");
                             errors.push((*query_id, e));
-                        } else {
-                            println!("    ✓ Deleted local files");
-                            cleaned_count += 1;
                         }
                     }
                 }
@@ -193,4 +186,41 @@ pub async fn unarchive(client: &RedashClient, query_ids: Vec<u64>) -> Result<()>
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn find_query_files_reads_id_only_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let queries_dir = temp_dir.path();
+        let sql_path = queries_dir.join("1200000001.sql");
+        let yaml_path = queries_dir.join("1200000001.yaml");
+        fs::write(&sql_path, "SELECT 1").unwrap();
+        fs::write(&yaml_path, "id: 1200000001").unwrap();
+
+        let found = find_query_files_in(queries_dir, 1_200_000_001).unwrap();
+        assert_eq!(
+            found,
+            Some((
+                sql_path.to_string_lossy().to_string(),
+                yaml_path.to_string_lossy().to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn find_query_files_returns_none_for_an_incomplete_pair() {
+        let temp_dir = TempDir::new().unwrap();
+        let queries_dir = temp_dir.path();
+        fs::write(queries_dir.join("1200000001.yaml"), "id: 1200000001").unwrap();
+
+        assert_eq!(
+            find_query_files_in(queries_dir, 1_200_000_001).unwrap(),
+            None
+        );
+    }
 }

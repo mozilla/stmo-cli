@@ -10,17 +10,6 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
-}
-
 fn validate_enum_options(metadata: &crate::models::QueryMetadata, yaml_path: &str) -> Result<()> {
     for param in &metadata.options.parameters {
         if let Some(enum_opts) = &param.enum_options
@@ -76,8 +65,16 @@ pub(crate) fn tracked_query_differs(
     local_metadata: &QueryMetadata,
     server: &Query,
 ) -> bool {
+    local_metadata.name != server.name
+        || tracked_query_content_differs(local_sql, local_metadata, server)
+}
+
+pub(crate) fn tracked_query_content_differs(
+    local_sql: &str,
+    local_metadata: &QueryMetadata,
+    server: &Query,
+) -> bool {
     local_sql != server.sql
-        || local_metadata.name != server.name
         || local_metadata.description != server.description
         || local_metadata.data_source_id != server.data_source_id
         || local_metadata.schedule != server.schedule
@@ -88,15 +85,16 @@ pub(crate) fn tracked_query_differs(
 }
 
 fn read_local_query(id: u64, name: &str) -> Result<(String, QueryMetadata)> {
-    let slug = slugify(name);
-    let sql_path = format!("queries/{id}-{slug}.sql");
-    let yaml_path = format!("queries/{id}-{slug}.yaml");
+    let base = crate::commands::query_file_base(Path::new("queries"), id, name);
+    let sql_path = base.with_extension("sql");
+    let yaml_path = base.with_extension("yaml");
 
-    let sql = fs::read_to_string(&sql_path).context(format!("Failed to read {sql_path}"))?;
-    let metadata_content =
-        fs::read_to_string(&yaml_path).context(format!("Failed to read {yaml_path}"))?;
-    let metadata: QueryMetadata =
-        serde_yaml::from_str(&metadata_content).context(format!("Failed to parse {yaml_path}"))?;
+    let sql =
+        fs::read_to_string(&sql_path).context(format!("Failed to read {}", sql_path.display()))?;
+    let metadata_content = fs::read_to_string(&yaml_path)
+        .context(format!("Failed to read {}", yaml_path.display()))?;
+    let metadata: QueryMetadata = serde_yaml::from_str(&metadata_content)
+        .context(format!("Failed to parse {}", yaml_path.display()))?;
 
     Ok((sql, metadata))
 }
@@ -187,10 +185,10 @@ fn get_all_query_metadata_from_path(queries_dir: &Path) -> Result<Vec<(u64, Stri
             let metadata: crate::models::QueryMetadata = serde_yaml::from_str(&metadata_content)
                 .context(format!("Failed to parse {}", path.display()))?;
 
-            crate::commands::ensure_filename_matches_identity(
+            crate::commands::ensure_query_filename_matches_identity(
                 &path,
-                &format!("{}-{}", metadata.id, slugify(&metadata.name)),
-                "name",
+                metadata.id,
+                &metadata.name,
             )?;
 
             // A tracked id can legitimately be claimed by two differently
@@ -302,28 +300,29 @@ async fn deploy_visualizations(
 
 #[allow(clippy::too_many_lines)]
 pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Query> {
-    let slug = slugify(name);
-    let sql_path = format!("queries/{id}-{slug}.sql");
-    let yaml_path = format!("queries/{id}-{slug}.yaml");
+    let source_base = crate::commands::query_file_base(Path::new("queries"), id, name);
+    let sql_path = source_base.with_extension("sql");
+    let yaml_path = source_base.with_extension("yaml");
 
-    if !Path::new(&sql_path).exists() {
-        bail!("Query SQL file not found: {sql_path}");
+    if !sql_path.exists() {
+        bail!("Query SQL file not found: {}", sql_path.display());
     }
-    if !Path::new(&yaml_path).exists() {
-        bail!("Query metadata file not found: {yaml_path}");
+    if !yaml_path.exists() {
+        bail!("Query metadata file not found: {}", yaml_path.display());
     }
 
-    let sql = fs::read_to_string(&sql_path).context(format!("Failed to read {sql_path}"))?;
+    let sql =
+        fs::read_to_string(&sql_path).context(format!("Failed to read {}", sql_path.display()))?;
 
-    let metadata_content =
-        fs::read_to_string(&yaml_path).context(format!("Failed to read {yaml_path}"))?;
+    let metadata_content = fs::read_to_string(&yaml_path)
+        .context(format!("Failed to read {}", yaml_path.display()))?;
 
-    let metadata: crate::models::QueryMetadata =
-        serde_yaml::from_str(&metadata_content).context(format!("Failed to parse {yaml_path}"))?;
+    let metadata: crate::models::QueryMetadata = serde_yaml::from_str(&metadata_content)
+        .context(format!("Failed to parse {}", yaml_path.display()))?;
 
-    validate_enum_options(&metadata, &yaml_path)?;
+    validate_enum_options(&metadata, &yaml_path.display().to_string())?;
 
-    let (result_query, final_yaml_path) = if id == 0 {
+    let (result_query, final_base) = if id == 0 {
         let create_query = crate::models::CreateQuery {
             name: metadata.name.clone(),
             description: metadata.description.clone(),
@@ -337,17 +336,16 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
         };
         let created = client.create_query(&create_query).await?;
         let fetched = client.get_query(created.id).await?;
-        let new_slug = slugify(&fetched.name);
-        let new_base = format!("queries/{}-{new_slug}", fetched.id);
-        let new_yaml_path = format!("{new_base}.yaml");
-        fs::write(format!("{new_base}.sql"), &fetched.sql)
-            .context(format!("Failed to write {new_base}.sql"))?;
-        write_query_yaml(&new_yaml_path, &fetched)?;
-        fs::remove_file(&sql_path).context(format!("Failed to delete {sql_path}"))?;
-        fs::remove_file(&yaml_path).context(format!("Failed to delete {yaml_path}"))?;
+        let new_base = Path::new("queries").join(fetched.id.to_string());
+        if new_base.with_extension("sql").exists() || new_base.with_extension("yaml").exists() {
+            bail!(
+                "Query {} was created, but local files already exist at {}.*; the draft files were preserved",
+                fetched.id,
+                new_base.display()
+            );
+        }
         println!("  ✓ Created new query: {} - {name}", fetched.id);
-        println!("    Renamed: 0-{slug}.* → {}-{new_slug}.*", fetched.id);
-        (fetched, new_yaml_path)
+        (fetched, new_base)
     } else {
         let query = Query {
             id: metadata.id,
@@ -367,7 +365,7 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
         };
         let result = client.create_or_update_query(&query).await?;
         println!("  ✓ {id} - {name}");
-        (result, yaml_path.clone())
+        (result, Path::new("queries").join(id.to_string()))
     };
 
     deploy_visualizations(
@@ -379,7 +377,21 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
     .await?;
 
     let final_query = client.get_query(result_query.id).await?;
-    write_query_yaml(&final_yaml_path, &final_query)?;
+    let final_sql_path = final_base.with_extension("sql");
+    let final_yaml_path = final_base.with_extension("yaml");
+    fs::write(&final_sql_path, &final_query.sql)
+        .context(format!("Failed to write {}", final_sql_path.display()))?;
+    write_query_yaml(&final_yaml_path.display().to_string(), &final_query)?;
+
+    if source_base != final_base {
+        fs::remove_file(&sql_path).context(format!("Failed to delete {}", sql_path.display()))?;
+        fs::remove_file(&yaml_path).context(format!("Failed to delete {}", yaml_path.display()))?;
+        println!(
+            "    Renamed: {}.* → {}.*",
+            source_base.display(),
+            final_base.display()
+        );
+    }
 
     Ok(final_query)
 }

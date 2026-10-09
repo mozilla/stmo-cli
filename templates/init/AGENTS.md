@@ -6,7 +6,7 @@ This repository contains version-controlled Redash queries and dashboards manage
 
 **Install**: `cargo install stmo-cli`
 **Commands**: `discover [--search TEXT] [--limit N]` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule` `snippets`
-**File Naming**: `queries/{id}-{slug}.sql` + `queries/{id}-{slug}.yaml`, `dashboards/{id}-{slug}.yaml`, `snippets/{id}-{trigger}.sql` + `snippets/{id}-{trigger}.yaml`
+**File Naming**: `queries/{id}.sql` + `queries/{id}.yaml` for saved queries; `queries/0-{slug}.sql` + `.yaml` for drafts; `dashboards/{id}-{slug}.yaml`; `snippets/{id}-{trigger}.sql` + `snippets/{id}-{trigger}.yaml`
 **Env Vars**: `REDASH_API_KEY` (required), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
 ## Data Exploration (AI Assistants)
@@ -18,7 +18,7 @@ This repository contains version-controlled Redash queries and dashboards manage
 1. **Find data sources**: `stmo-cli data-sources`
 2. **Explore schema**: `stmo-cli data-sources <id> --schema`
 3. **Discover queries**: `stmo-cli discover --search "<keyword>"` (or bare `stmo-cli discover` to list your own queries)
-4. **Fetch query**: `stmo-cli fetch <id>` → read `queries/<id>-*.sql`
+4. **Fetch query**: `stmo-cli fetch <id>` → read `queries/<id>.sql`
 5. **Execute**: `stmo-cli execute <id> --format table`
 6. **Clean up**: `stmo-cli archive <id>` (MANDATORY)
 
@@ -76,8 +76,8 @@ Examples:
 
 ## File Format
 
-**SQL**: `queries/{id}-{slug}.sql` - query text
-**YAML**: `queries/{id}-{slug}.yaml` - metadata (name, data_source_id, parameters, visualizations)
+**SQL**: `queries/{id}.sql` - query text
+**YAML**: `queries/{id}.yaml` - metadata (name, data_source_id, parameters, visualizations)
 
 Example YAML with visualizations:
 ```yaml
@@ -120,8 +120,8 @@ the original file — real style/structure feedback without needing a full stand
 ## Query Creation
 
 1. Create `0-{slug}.sql` + `0-{slug}.yaml` with `id: 0`
-2. `stmo-cli deploy` → creates query in Redash and auto-renames local files to `{new-id}-{slug}.*`
-3. If this repo is under version control, commit the renamed `{new-id}-{slug}.*` files —
+2. `stmo-cli deploy` → creates query in Redash and auto-renames local files to `{new-id}.*`
+3. If this repo is under version control, commit the renamed `{new-id}.*` files —
    **never commit `0-*.` files**
 
 ## Dashboard Creation

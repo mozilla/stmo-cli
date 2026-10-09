@@ -5,17 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::api::RedashClient;
-
-fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
-}
+use crate::models::{Query, QueryMetadata, VisualizationMetadata};
 
 fn extract_query_ids_from_directory() -> Result<Vec<u64>> {
     let queries_dir = Path::new("queries");
@@ -31,9 +21,8 @@ fn extract_query_ids_from_directory() -> Result<Vec<u64>> {
         let path = entry.path();
 
         if path.extension().is_some_and(|ext| ext == "yaml")
-            && let Some(filename) = path.file_name().and_then(|f| f.to_str())
-            && let Some(id_str) = filename.split('-').next()
-            && let Ok(id) = id_str.parse::<u64>()
+            && let Some(id) = crate::commands::query_id_from_path(&path)
+            && id != 0
         {
             query_ids.push(id);
         }
@@ -45,11 +34,100 @@ fn extract_query_ids_from_directory() -> Result<Vec<u64>> {
     Ok(query_ids)
 }
 
+fn write_fetched_query(query: &Query) -> Result<bool> {
+    let queries_dir = Path::new("queries");
+    let file_sets = crate::commands::query_file_sets_by_id(queries_dir, query.id)?;
+
+    for file_set in &file_sets {
+        let (Some(sql_path), Some(yaml_path)) = (&file_set.sql, &file_set.yaml) else {
+            anyhow::bail!(
+                "Incomplete local query files at {}; leaving them unchanged",
+                file_set.base.display()
+            );
+        };
+
+        let sql = fs::read_to_string(sql_path)
+            .context(format!("Failed to read {}", sql_path.display()))?;
+        let yaml_content = fs::read_to_string(yaml_path)
+            .context(format!("Failed to read {}", yaml_path.display()))?;
+        let metadata: QueryMetadata = serde_yaml::from_str(&yaml_content)
+            .context(format!("Failed to parse {}", yaml_path.display()))?;
+
+        if metadata.id != query.id {
+            anyhow::bail!(
+                "{} declares query ID {}, expected {}; leaving local files unchanged",
+                yaml_path.display(),
+                metadata.id,
+                query.id
+            );
+        }
+
+        crate::commands::ensure_query_filename_matches_identity(
+            yaml_path,
+            metadata.id,
+            &metadata.name,
+        )?;
+
+        if crate::commands::deploy::tracked_query_content_differs(&sql, &metadata, query) {
+            anyhow::bail!(
+                "Local SQL or metadata differs from Redash for query {}; leaving {}.* unchanged. Resolve or deploy the local changes before fetching",
+                query.id,
+                file_set.base.display()
+            );
+        }
+    }
+
+    let mut visualizations: Vec<VisualizationMetadata> = query
+        .visualizations
+        .iter()
+        .map(VisualizationMetadata::from)
+        .collect();
+    visualizations.sort_by_key(|visualization| visualization.id);
+    let metadata = QueryMetadata {
+        id: query.id,
+        name: query.name.clone(),
+        description: query.description.clone(),
+        data_source_id: query.data_source_id,
+        user_id: query.user.as_ref().map(|user| user.id),
+        schedule: query.schedule.clone(),
+        options: query.options.clone(),
+        visualizations,
+        tags: query.tags.clone(),
+    };
+    let yaml_content =
+        serde_yaml::to_string(&metadata).context("Failed to serialize query metadata")?;
+
+    let canonical_base = queries_dir.join(query.id.to_string());
+    let sql_path = canonical_base.with_extension("sql");
+    let yaml_path = canonical_base.with_extension("yaml");
+    fs::write(&sql_path, &query.sql).context(format!("Failed to write {}", sql_path.display()))?;
+    fs::write(&yaml_path, yaml_content)
+        .context(format!("Failed to write {}", yaml_path.display()))?;
+
+    let mut migrated = false;
+    for file_set in file_sets {
+        if file_set.base == canonical_base {
+            continue;
+        }
+
+        if let Some(path) = file_set.sql {
+            fs::remove_file(&path).context(format!("Failed to delete {}", path.display()))?;
+        }
+        if let Some(path) = file_set.yaml {
+            fs::remove_file(&path).context(format!("Failed to delete {}", path.display()))?;
+        }
+        migrated = true;
+    }
+
+    Ok(migrated)
+}
+
 pub async fn fetch(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Result<()> {
     fs::create_dir_all("queries").context("Failed to create queries directory")?;
 
     let existing_query_ids = extract_query_ids_from_directory()?;
 
+    let mut failures = Vec::new();
     let queries_to_fetch = if all {
         if existing_query_ids.is_empty() {
             anyhow::bail!(
@@ -64,7 +142,10 @@ pub async fn fetch(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Res
         for id in &existing_query_ids {
             match client.get_query(*id).await {
                 Ok(query) => queries.push(query),
-                Err(e) => eprintln!("  ⚠ Query {id} failed to fetch: {e}"),
+                Err(e) => {
+                    eprintln!("  ⚠ Query {id} failed to fetch: {e}");
+                    failures.push(format!("{id}: {e}"));
+                }
             }
         }
         queries
@@ -74,7 +155,10 @@ pub async fn fetch(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Res
         for id in &query_ids {
             match client.get_query(*id).await {
                 Ok(query) => queries.push(query),
-                Err(e) => eprintln!("  ⚠ Query {id} failed to fetch: {e}"),
+                Err(e) => {
+                    eprintln!("  ⚠ Query {id} failed to fetch: {e}");
+                    failures.push(format!("{id}: {e}"));
+                }
             }
         }
         queries
@@ -87,36 +171,18 @@ pub async fn fetch(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Res
     println!("Fetching {} queries...", queries_to_fetch.len());
 
     let mut archived_queries = Vec::new();
+    let mut fetched_count = 0;
 
     for query in &queries_to_fetch {
-        let slug = slugify(&query.name);
-        let filename_base = format!("{}-{}", query.id, slug);
-
-        let sql_path = format!("queries/{filename_base}.sql");
-        fs::write(&sql_path, &query.sql).context(format!("Failed to write {sql_path}"))?;
-
-        let mut visualizations: Vec<crate::models::VisualizationMetadata> = query
-            .visualizations
-            .iter()
-            .map(crate::models::VisualizationMetadata::from)
-            .collect();
-        visualizations.sort_by_key(|v| v.id);
-        let metadata = crate::models::QueryMetadata {
-            id: query.id,
-            name: query.name.clone(),
-            description: query.description.clone(),
-            data_source_id: query.data_source_id,
-            user_id: query.user.as_ref().map(|u| u.id),
-            schedule: query.schedule.clone(),
-            options: query.options.clone(),
-            visualizations,
-            tags: query.tags.clone(),
+        let migrated = match write_fetched_query(query) {
+            Ok(migrated) => migrated,
+            Err(error) => {
+                eprintln!("  ✗ Query {} - {}: {error:#}", query.id, query.name);
+                failures.push(format!("{}: {error:#}", query.id));
+                continue;
+            }
         };
-
-        let yaml_path = format!("queries/{filename_base}.yaml");
-        let yaml_content =
-            serde_yaml::to_string(&metadata).context("Failed to serialize query metadata")?;
-        fs::write(&yaml_path, yaml_content).context(format!("Failed to write {yaml_path}"))?;
+        fetched_count += 1;
 
         if query.is_archived {
             archived_queries.push((query.id, query.name.clone()));
@@ -124,9 +190,15 @@ pub async fn fetch(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Res
         } else {
             println!("  ✓ {} - {}", query.id, query.name);
         }
+        if migrated {
+            println!("    Migrated local files to queries/{}.*", query.id);
+        }
     }
 
-    println!("\n✓ All resources fetched successfully");
+    println!(
+        "\n✓ Fetched {fetched_count}/{} queries",
+        queries_to_fetch.len()
+    );
 
     if !archived_queries.is_empty() {
         println!(
@@ -147,54 +219,75 @@ pub async fn fetch(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Res
         println!("\nConsider cleaning up with: {binary_name} archive --cleanup");
     }
 
+    if !failures.is_empty() {
+        anyhow::bail!(
+            "Failed to fetch {} query operation(s): {}",
+            failures.len(),
+            failures.join(", ")
+        );
+    }
+
     Ok(())
 }
 
 #[cfg(test)]
 #[allow(clippy::missing_errors_doc)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_slugify_simple() {
-        assert_eq!(slugify("Hello World"), "hello-world");
+        assert_eq!(crate::commands::query_slugify("Hello World"), "hello-world");
     }
 
     #[test]
     fn test_slugify_special_chars() {
-        assert_eq!(slugify("Foo & Bar!"), "foo-bar");
-        assert_eq!(slugify("Test@#$%Query"), "test-query");
+        assert_eq!(crate::commands::query_slugify("Foo & Bar!"), "foo-bar");
+        assert_eq!(
+            crate::commands::query_slugify("Test@#$%Query"),
+            "test-query"
+        );
     }
 
     #[test]
     fn test_slugify_unicode() {
-        assert_eq!(slugify("Café Münch"), "café-münch");
-        assert_eq!(slugify("日本語"), "日本語");
+        assert_eq!(crate::commands::query_slugify("Café Münch"), "café-münch");
+        assert_eq!(crate::commands::query_slugify("日本語"), "日本語");
     }
 
     #[test]
     fn test_slugify_multiple_spaces() {
-        assert_eq!(slugify("a  b   c"), "a-b-c");
-        assert_eq!(slugify("  leading and trailing  "), "leading-and-trailing");
+        assert_eq!(crate::commands::query_slugify("a  b   c"), "a-b-c");
+        assert_eq!(
+            crate::commands::query_slugify("  leading and trailing  "),
+            "leading-and-trailing"
+        );
     }
 
     #[test]
     fn test_slugify_already_slugified() {
-        assert_eq!(slugify("already-slug"), "already-slug");
-        assert_eq!(slugify("some-kebab-case"), "some-kebab-case");
+        assert_eq!(
+            crate::commands::query_slugify("already-slug"),
+            "already-slug"
+        );
+        assert_eq!(
+            crate::commands::query_slugify("some-kebab-case"),
+            "some-kebab-case"
+        );
     }
 
     #[test]
     fn test_slugify_numbers() {
-        assert_eq!(slugify("Query 123"), "query-123");
-        assert_eq!(slugify("123-456"), "123-456");
+        assert_eq!(crate::commands::query_slugify("Query 123"), "query-123");
+        assert_eq!(crate::commands::query_slugify("123-456"), "123-456");
     }
 
     #[test]
     fn test_slugify_mixed() {
-        assert_eq!(slugify("Mozilla's .deb Package!"), "mozilla-s-deb-package");
         assert_eq!(
-            slugify("Copy of an example query"),
+            crate::commands::query_slugify("Mozilla's .deb Package!"),
+            "mozilla-s-deb-package"
+        );
+        assert_eq!(
+            crate::commands::query_slugify("Copy of an example query"),
             "copy-of-an-example-query"
         );
     }

@@ -29,41 +29,47 @@ fn parse_parameter_arg(arg: &str) -> Result<(String, serde_json::Value)> {
 }
 
 fn load_query_metadata_by_id(query_id: u64) -> Result<(QueryMetadata, String, String)> {
-    let queries_dir = Path::new("queries");
+    load_query_metadata_by_id_in(Path::new("queries"), query_id)
+}
 
-    for entry in fs::read_dir(queries_dir).context("Failed to read queries directory")? {
-        let entry = entry.context("Failed to read directory entry")?;
-        let path = entry.path();
+fn load_query_metadata_by_id_in(
+    queries_dir: &Path,
+    query_id: u64,
+) -> Result<(QueryMetadata, String, String)> {
+    let Some(file_set) = crate::commands::unique_query_file_set_by_id(queries_dir, query_id)?
+    else {
+        bail!(
+            "Query {query_id} not found in queries/ directory. Run 'stmo-cli fetch {query_id}' first."
+        );
+    };
+    let (Some(sql_path), Some(yaml_path)) = (file_set.sql, file_set.yaml) else {
+        bail!(
+            "Incomplete local query files at {}.*",
+            file_set.base.display()
+        );
+    };
 
-        if path.extension().is_some_and(|ext| ext == "yaml")
-            && let Some(filename) = path.file_name().and_then(|f| f.to_str())
-            && let Some(id_str) = filename.split('-').next()
-            && let Ok(id) = id_str.parse::<u64>()
-            && id == query_id
-        {
-            let yaml_content =
-                fs::read_to_string(&path).context(format!("Failed to read {}", path.display()))?;
-
-            let metadata: QueryMetadata = serde_yaml::from_str(&yaml_content)
-                .context(format!("Failed to parse {}", path.display()))?;
-
-            let yaml_path = path.display().to_string();
-            let sql_path = yaml_path.replace(".yaml", ".sql");
-
-            if !Path::new(&sql_path).exists() {
-                bail!("SQL file not found: {sql_path}");
-            }
-
-            let sql =
-                fs::read_to_string(&sql_path).context(format!("Failed to read {sql_path}"))?;
-
-            return Ok((metadata, sql, yaml_path));
-        }
+    let yaml_content = fs::read_to_string(&yaml_path)
+        .context(format!("Failed to read {}", yaml_path.display()))?;
+    let metadata: QueryMetadata = serde_yaml::from_str(&yaml_content)
+        .context(format!("Failed to parse {}", yaml_path.display()))?;
+    if metadata.id != query_id {
+        bail!(
+            "{} declares query ID {}, expected {query_id}",
+            yaml_path.display(),
+            metadata.id
+        );
     }
+    crate::commands::ensure_query_filename_matches_identity(
+        &yaml_path,
+        metadata.id,
+        &metadata.name,
+    )?;
 
-    bail!(
-        "Query {query_id} not found in queries/ directory. Run 'stmo-cli fetch {query_id}' first."
-    );
+    let sql =
+        fs::read_to_string(&sql_path).context(format!("Failed to read {}", sql_path.display()))?;
+
+    Ok((metadata, sql, yaml_path.display().to_string()))
 }
 
 fn prompt_for_parameter(param: &Parameter) -> Result<serde_json::Value> {
@@ -525,6 +531,25 @@ pub async fn execute(client: &RedashClient, args: ExecuteArgs) -> Result<()> {
 mod tests {
     use super::*;
     use crate::models::{Column, QueryResult, QueryResultData};
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_load_query_metadata_by_id_reads_id_only_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let queries_dir = temp_dir.path();
+        std::fs::write(queries_dir.join("1200000001.sql"), "SELECT 1").unwrap();
+        std::fs::write(
+            queries_dir.join("1200000001.yaml"),
+            "id: 1200000001\nname: Example Query\ndescription: null\ndata_source_id: 1500000001\nschedule: null\noptions:\n  parameters: []\nvisualizations: []\ntags: null\n",
+        )
+        .unwrap();
+
+        let (metadata, sql, yaml_path) =
+            load_query_metadata_by_id_in(queries_dir, 1_200_000_001).unwrap();
+        assert_eq!(metadata.id, 1_200_000_001);
+        assert_eq!(sql, "SELECT 1");
+        assert_eq!(Path::new(&yaml_path), queries_dir.join("1200000001.yaml"));
+    }
 
     #[test]
     fn test_tracked_source_line_identifies_server_stored_query() {

@@ -428,10 +428,10 @@ execute ID: deploys local .sql/.yaml first if it differs from the server-stored 
 archive IDs: archives on server + deletes local | archive --cleanup: deletes local only for already-archived (does NOT archive on server)
 dashboards: addressed by slug not ID; only favorited dashboards appear in dashboards discover
 
-Files: queries/<id>-<slug>.sql + .yaml, dashboards/<id>-<slug>.yaml, snippets/<id>-<trigger>.sql + .yaml | id=0 for new resources, auto-renamed after first deploy
+Files: queries/<id>.sql + .yaml (legacy queries/<id>-<slug>.* are migrated on fetch/deploy), dashboards/<id>-<slug>.yaml, snippets/<id>-<trigger>.sql + .yaml | query id=0 drafts use 0-<slug> and become ID-only after deploy
 snippets: no archive concept in Redash — delete IDs removes on server + local files (irreversible, unlike archive)
 Required YAML fields: id name data_source_id options.parameters(can be []) visualizations(can be [])
-Slug from name: lowercase, non-alphanum→'-', collapse dashes (e.g. "Mozilla's .rpm"→"mozilla-s-rpm")
+Slug from name: lowercase, non-alphanum→'-', collapse dashes (used for new query drafts and dashboards; e.g. "Mozilla's .rpm"→"mozilla-s-rpm")
 enumOptions: use YAML multiline (|-), NOT escaped \n or deploy fails
 Multi-value enum params require JSON array: --param channels='["release","beta"]'
 Dynamic date tokens resolved client-side (tracked queries only): d_now/d_yesterday (date types); d_today/d_last_7_days/d_last_month/d_this_week/... (range types)

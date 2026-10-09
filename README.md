@@ -116,8 +116,14 @@ stmo-cli discover --search "example metric" # Full-text search queries + dashboa
 ```
 
 This creates/updates:
-- `queries/{id}-{slug}.sql` - Query SQL
-- `queries/{id}-{slug}.yaml` - Query metadata (parameters, visualizations, etc.)
+- `queries/{id}.sql` - Query SQL
+- `queries/{id}.yaml` - Query metadata (name, parameters, visualizations, etc.)
+
+Saved query filenames use the stable Redash ID, so changing a query's title does not
+rename its local files. Existing `{id}-{slug}.*` files remain supported. Fetch migrates
+them to `{id}.*` only when their tracked content matches Redash; divergent files stay
+untouched and are reported. A successful deploy writes the server's resulting copy to
+`{id}.*`.
 
 ### Deploy to Redash
 
@@ -174,8 +180,8 @@ the server and deletes the local files in one step; there's no separate `--clean
 
 ```
 queries/
-├── {query-id}-example-query.sql
-└── {query-id}-example-query.yaml
+├── {query-id}.sql
+└── {query-id}.yaml
 dashboards/
 └── {dashboard-id}-example-dashboard.yaml
 snippets/
@@ -183,7 +189,7 @@ snippets/
 └── {snippet-id}-example-snippet.yaml
 ```
 
-Query IDs are embedded in filenames (`{id}-{slug}.{ext}`), so no separate config file is needed.
+Query IDs are embedded in filenames (`{id}.{ext}`), so no separate config file is needed.
 Snippet filenames use `{id}-{trigger}.{ext}` (Redash snippets are keyed by `trigger`, not `name`).
 
 ## Development
