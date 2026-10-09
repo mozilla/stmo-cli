@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.2] - 2026-10-09
+
+### Fixes
+- `dashboards deploy`: reject a widget with a missing or null `id` (or any other invalid widget) before anything is sent to Redash, naming the file and the widget, and suggesting `id: 0` for a new widget
+
 ## [0.12.1] - 2026-10-09
 
 ### Fixes
