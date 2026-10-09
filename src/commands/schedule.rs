@@ -7,22 +7,31 @@ use std::path::{Path, PathBuf};
 use crate::models::{QueryMetadata, Schedule};
 
 fn find_yaml_path_in(dir: &Path, query_id: u64) -> Result<Option<PathBuf>> {
-    if !dir.exists() {
+    let Some(file_set) = crate::commands::unique_query_file_set_by_id(dir, query_id)? else {
         return Ok(None);
+    };
+    let Some(yaml_path) = file_set.yaml else {
+        return Ok(None);
+    };
+
+    let content = fs::read_to_string(&yaml_path)
+        .context(format!("Failed to read {}", yaml_path.display()))?;
+    let metadata: QueryMetadata = serde_yaml::from_str(&content)
+        .context(format!("Failed to parse {}", yaml_path.display()))?;
+    if metadata.id != query_id {
+        bail!(
+            "{} declares query ID {}, expected {query_id}",
+            yaml_path.display(),
+            metadata.id
+        );
     }
-    for entry in fs::read_dir(dir).context("Failed to read queries directory")? {
-        let entry = entry.context("Failed to read directory entry")?;
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "yaml")
-            && let Some(filename) = path.file_name().and_then(|f| f.to_str())
-            && let Some(id_str) = filename.split('-').next()
-            && let Ok(id) = id_str.parse::<u64>()
-            && id == query_id
-        {
-            return Ok(Some(path));
-        }
-    }
-    Ok(None)
+    crate::commands::ensure_query_filename_matches_identity(
+        &yaml_path,
+        metadata.id,
+        &metadata.name,
+    )?;
+
+    Ok(Some(yaml_path))
 }
 
 fn update_yaml_schedule(yaml_path: &Path, schedule: Option<Schedule>) -> Result<String> {
@@ -178,6 +187,28 @@ mod tests {
 
         let not_found = find_yaml_path_in(queries_dir, 99_999).unwrap();
         assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn find_yaml_finds_id_only_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let queries_dir = temp_dir.path();
+        fs::write(queries_dir.join("1200000001.yaml"), SAMPLE_YAML).unwrap();
+        fs::write(queries_dir.join("1200000001.sql"), "SELECT 1").unwrap();
+
+        let found = find_yaml_path_in(queries_dir, 1_200_000_001).unwrap();
+        assert_eq!(found, Some(queries_dir.join("1200000001.yaml")));
+    }
+
+    #[test]
+    fn find_yaml_does_not_require_a_local_sql_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let queries_dir = temp_dir.path();
+        let yaml_path = queries_dir.join("1200000001-example-query.yaml");
+        fs::write(&yaml_path, SAMPLE_YAML).unwrap();
+
+        let found = find_yaml_path_in(queries_dir, 1_200_000_001).unwrap();
+        assert_eq!(found, Some(yaml_path));
     }
 
     #[test]
