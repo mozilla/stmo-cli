@@ -490,7 +490,7 @@ async fn main() -> Result<()> {
     }
 
     if let Commands::Guide = cli.command {
-        print!("{}", commands::guide::render(&Cli::command()));
+        print!("{}", commands::guide::guide(&Cli::command()));
         version_checker.print_warning();
         return Ok(());
     }
@@ -503,6 +503,73 @@ async fn main() -> Result<()> {
     run_command(client, cli.command).await?;
     version_checker.print_warning();
     Ok(())
+}
+
+#[cfg(test)]
+mod guide_prose_guard {
+    use super::Cli;
+    use clap::{Command, CommandFactory};
+
+    const PROSE: &str = include_str!("commands/guide.md");
+
+    fn is_word(token: &str) -> bool {
+        !token.is_empty() && token.chars().all(|c| c.is_ascii_lowercase() || c == '-')
+    }
+
+    fn resolve_path(root: &Command, tokens: &[&str]) -> Result<Command, String> {
+        let mut current = root.clone();
+        for token in tokens.iter().take_while(|t| is_word(t)) {
+            if current.get_subcommands().next().is_none() {
+                break;
+            }
+            current = current
+                .find_subcommand(token)
+                .cloned()
+                .ok_or_else(|| format!("no subcommand `{token}`"))?;
+        }
+        Ok(current)
+    }
+
+    fn check_flags(command: &Command, tokens: &[&str]) -> Result<(), String> {
+        for flag in tokens.iter().filter(|t| t.starts_with("--")) {
+            let name = flag.trim_start_matches("--").trim_end_matches(',');
+            let known = command
+                .get_arguments()
+                .any(|arg| arg.get_long() == Some(name));
+            if !known {
+                return Err(format!("no flag `{flag}` on `{}`", command.get_name()));
+            }
+        }
+        Ok(())
+    }
+
+    fn check_snippet(root: &Command, snippet: &str) -> Result<(), String> {
+        let tokens: Vec<&str> = snippet.split_whitespace().skip(1).collect();
+        let leaf = resolve_path(root, &tokens)?;
+        check_flags(&leaf, &tokens)
+    }
+
+    fn stmo_snippets(prose: &str) -> Vec<&str> {
+        prose
+            .lines()
+            .filter(|line| !line.starts_with("```"))
+            .flat_map(|line| line.split('`').skip(1).step_by(2))
+            .filter(|segment| segment.starts_with("stmo-cli "))
+            .collect()
+    }
+
+    #[test]
+    fn every_stmo_cli_snippet_in_guide_prose_resolves_to_real_command() {
+        let root = Cli::command();
+        let snippets = stmo_snippets(PROSE);
+
+        assert_ne!(snippets, [] as [&str; 0]);
+        for snippet in snippets {
+            if let Err(problem) = check_snippet(&root, snippet) {
+                panic!("guide.md snippet `{snippet}`: {problem}");
+            }
+        }
+    }
 }
 
 #[cfg(test)]

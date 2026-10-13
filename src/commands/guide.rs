@@ -1,6 +1,17 @@
 use clap::{Arg, ArgAction, Command};
 use std::fmt::Write;
 
+const PROSE: &str = include_str!("guide.md");
+
+#[must_use]
+pub fn guide(command: &Command) -> String {
+    format!(
+        "{}\n\n# Command Reference\n\n{}",
+        PROSE.trim_end(),
+        render(command)
+    )
+}
+
 #[must_use]
 pub fn render(command: &Command) -> String {
     let mut out = String::new();
