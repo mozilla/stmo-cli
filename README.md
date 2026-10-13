@@ -93,6 +93,11 @@ anything:
 `queries/` and `dashboards/` are always created; everything else is opt-in. `init` never
 runs git on your behalf unless you say yes — no more surprise commits.
 
+The generated `AGENTS.md` is a short stub that points the assistant at `stmo-cli guide`.
+Repos scaffolded before this change keep their long `AGENTS.md`, and `init` leaves existing
+files alone. To switch, replace that file's contents with the stub, which is the first
+paragraph and the Notes section of a freshly generated `AGENTS.md`.
+
 4. Discover available queries:
 ```bash
 stmo-cli discover                          # List your own queries

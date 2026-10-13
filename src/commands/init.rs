@@ -914,9 +914,8 @@ mod tests {
 
         assert!(TEMPLATE_GITIGNORE.contains(".DS_Store"));
 
-        assert!(TEMPLATE_AGENTS_MD.contains("stmo-cli"));
-        assert!(TEMPLATE_AGENTS_MD.contains("Quick Reference"));
-        assert!(TEMPLATE_AGENTS_MD.contains("snippets"));
+        assert!(TEMPLATE_AGENTS_MD.contains("stmo-cli guide"));
+        assert!(!TEMPLATE_AGENTS_MD.contains("Quick Reference"));
     }
 
     #[test]
