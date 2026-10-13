@@ -6,6 +6,7 @@ pub mod discover;
 pub mod dynamic_dates;
 pub mod execute;
 pub mod fetch;
+pub mod guide;
 pub mod init;
 pub mod schedule;
 pub mod snippets;

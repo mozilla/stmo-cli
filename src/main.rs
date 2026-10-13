@@ -5,7 +5,7 @@ mod models;
 
 use anyhow::{Context, Result};
 use api::RedashClient;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use moz_cli_version_check::VersionChecker;
 
 #[derive(Parser)]
@@ -195,6 +195,9 @@ enum Commands {
 
     #[command(about = "Store your Redash API key in the macOS Keychain")]
     Login,
+
+    #[command(about = "Print agent instructions and a command reference for this CLI version")]
+    Guide,
 }
 
 #[derive(Subcommand)]
@@ -274,7 +277,9 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
         Commands::Discover { search, limit } => {
             commands::discover::discover(&client, search.as_deref(), limit).await?;
         }
-        Commands::Init { .. } | Commands::Update | Commands::Login => unreachable!(),
+        Commands::Init { .. } | Commands::Update | Commands::Login | Commands::Guide => {
+            unreachable!()
+        }
         Commands::Fetch { query_ids, all } => {
             commands::fetch::fetch(&client, query_ids, all).await?;
         }
@@ -418,7 +423,7 @@ API key: https://sql.telemetry.mozilla.org/users/me → API Key section
 
 discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N] [--timeout SECS]
 execute --data-source ID [--file PATH|-] [--param k=v]...: ad-hoc SQL from a file or stdin ('-' or omit --file = read stdin), no tracked query created (no schema, so no d_* dates or multi-value expansion — inline values in the SQL)
-data-sources [ID] [--schema] [--refresh] [--format table|json] | archive IDs | archive --cleanup | unarchive IDs | init [PATH] | update | login
+data-sources [ID] [--schema] [--refresh] [--format table|json] | archive IDs | archive --cleanup | unarchive IDs | init [PATH] | update | login | guide (agent instructions for this version)
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
 snippets list|fetch [IDs] [--all]|deploy [IDs] [--all]|delete IDs
 
@@ -482,6 +487,12 @@ async fn main() -> Result<()> {
         let result = config::login();
         version_checker.print_warning();
         return result;
+    }
+
+    if let Commands::Guide = cli.command {
+        print!("{}", commands::guide::render(&Cli::command()));
+        version_checker.print_warning();
+        return Ok(());
     }
 
     let api_key = config::resolve_api_key()?;
