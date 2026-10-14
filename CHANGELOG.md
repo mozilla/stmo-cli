@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.0] - 2026-10-14
+
+### Features
+- `guide`: print agent instructions and a command reference generated from the CLI
+- `init`: write an `AGENTS.md` stub that points to `guide`
+
 ## [0.12.2] - 2026-10-09
 
 ### Fixes
