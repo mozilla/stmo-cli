@@ -1,11 +1,12 @@
 #![allow(clippy::missing_errors_doc)]
 
 use crate::api::RedashClient;
+use crate::commands::QueryFileSet;
 use crate::models::{Query, QueryMetadata, Visualization, VisualizationMetadata};
 use anyhow::{Context, Result, bail};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -113,7 +114,74 @@ fn read_local_query(id: u64, name: &str) -> Result<(String, QueryMetadata)> {
     Ok((sql, metadata))
 }
 
+fn query_file_set_matches_server(file_set: &QueryFileSet, server: &Query) -> Result<bool> {
+    let (Some(sql_path), Some(yaml_path)) = (&file_set.sql, &file_set.yaml) else {
+        return Ok(false);
+    };
+    let sql =
+        fs::read_to_string(sql_path).context(format!("Failed to read {}", sql_path.display()))?;
+    let metadata_content =
+        fs::read_to_string(yaml_path).context(format!("Failed to read {}", yaml_path.display()))?;
+    let metadata: QueryMetadata = serde_yaml::from_str(&metadata_content)
+        .context(format!("Failed to parse {}", yaml_path.display()))?;
+    Ok(!tracked_query_differs(&sql, &metadata, server))
+}
+
+fn matching_query_file_bases(file_sets: &[QueryFileSet], server: &Query) -> Result<Vec<PathBuf>> {
+    let mut matching = Vec::new();
+    for file_set in file_sets {
+        if query_file_set_matches_server(file_set, server)? {
+            matching.push(file_set.base.clone());
+        }
+    }
+    Ok(matching)
+}
+
+fn join_base_paths<'a>(bases: impl Iterator<Item = &'a PathBuf>) -> String {
+    bases
+        .map(|base| base.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn ambiguous_query_files_message(
+    id: u64,
+    file_sets: &[QueryFileSet],
+    matching: &[PathBuf],
+) -> String {
+    let all_bases = join_base_paths(file_sets.iter().map(|file_set| &file_set.base));
+    let verdict = if matching.is_empty() {
+        "The Redash copy matches none of them;".to_string()
+    } else {
+        format!(
+            "The Redash copy matches {};",
+            join_base_paths(matching.iter())
+        )
+    };
+    format!(
+        "Multiple local query files found for ID {id}: {all_bases}. {verdict} remove the others before deploying."
+    )
+}
+
+async fn ensure_unambiguous_query_files(client: &RedashClient, id: u64) -> Result<()> {
+    let file_sets = crate::commands::query_file_sets_by_id(Path::new("queries"), id)?;
+    if file_sets.len() <= 1 {
+        return Ok(());
+    }
+
+    let server = client
+        .get_query(id)
+        .await
+        .context(format!("Failed to fetch query {id} from Redash"))?;
+    let matching = matching_query_file_bases(&file_sets, &server)?;
+    bail!(
+        "{}",
+        ambiguous_query_files_message(id, &file_sets, &matching)
+    );
+}
+
 async fn query_changed(client: &RedashClient, id: u64, name: &str) -> Result<bool> {
+    ensure_unambiguous_query_files(client, id).await?;
     let (sql, metadata) = read_local_query(id, name)?;
     let server = client
         .get_query(id)
@@ -314,6 +382,9 @@ async fn deploy_visualizations(
 
 #[allow(clippy::too_many_lines)]
 pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Query> {
+    if id != 0 {
+        ensure_unambiguous_query_files(client, id).await?;
+    }
     let source_base = crate::commands::query_file_base(Path::new("queries"), id, name)?;
     let sql_path = source_base.with_extension("sql");
     let yaml_path = source_base.with_extension("yaml");
@@ -900,5 +971,62 @@ mod tests {
         assert!(err_msg.contains("id 1200000001"));
         assert!(err_msg.contains("first-example-query.yaml"));
         assert!(err_msg.contains("second-example-query.yaml"));
+    }
+
+    #[test]
+    fn ambiguous_query_files_message_names_the_base_matching_the_server_copy() {
+        let file_sets = vec![
+            QueryFileSet {
+                base: PathBuf::from("queries/1200000001"),
+                ..QueryFileSet::default()
+            },
+            QueryFileSet {
+                base: PathBuf::from("queries/1200000001-old-slug"),
+                ..QueryFileSet::default()
+            },
+        ];
+        let matching = vec![PathBuf::from("queries/1200000001-old-slug")];
+
+        let message = ambiguous_query_files_message(1_200_000_001, &file_sets, &matching);
+
+        assert!(message.contains("Multiple local query files found for ID 1200000001"));
+        assert!(message.contains("queries/1200000001, queries/1200000001-old-slug."));
+        assert!(message.contains("The Redash copy matches queries/1200000001-old-slug;"));
+    }
+
+    #[test]
+    fn ambiguous_query_files_message_says_when_no_base_matches_the_server_copy() {
+        let file_sets = vec![
+            QueryFileSet {
+                base: PathBuf::from("queries/1200000001"),
+                ..QueryFileSet::default()
+            },
+            QueryFileSet {
+                base: PathBuf::from("queries/1200000001-old-slug"),
+                ..QueryFileSet::default()
+            },
+        ];
+
+        let message = ambiguous_query_files_message(1_200_000_001, &file_sets, &[]);
+
+        assert!(message.contains("The Redash copy matches none of them;"));
+    }
+
+    #[test]
+    fn matching_query_file_bases_returns_only_the_set_identical_to_the_server() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let dir = temp_dir.path();
+        let yaml =
+            serde_yaml::to_string(&make_query_metadata("Example Query", 1_500_000_001)).unwrap();
+        fs::write(dir.join("1200000001.sql"), "SELECT 1").unwrap();
+        fs::write(dir.join("1200000001.yaml"), &yaml).unwrap();
+        fs::write(dir.join("1200000001-old-slug.sql"), "SELECT 2").unwrap();
+        fs::write(dir.join("1200000001-old-slug.yaml"), &yaml).unwrap();
+        let file_sets = crate::commands::query_file_sets_by_id(dir, 1_200_000_001).unwrap();
+        let server = make_server_query("SELECT 1", "Example Query", 1_500_000_001);
+
+        let matching = matching_query_file_bases(&file_sets, &server).unwrap();
+
+        assert_eq!(matching, vec![dir.join("1200000001")]);
     }
 }
