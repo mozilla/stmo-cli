@@ -3,6 +3,10 @@
 use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+const BINSTALL_ARGS: &[&str] = &["binstall", "--no-confirm", "stmo-cli"];
+const CARGO_INSTALL_ARGS: &[&str] = &["install", "stmo-cli", "--locked"];
 
 fn cargo_home() -> Option<PathBuf> {
     std::env::var("CARGO_HOME")
@@ -36,43 +40,66 @@ fn cargo_writable() -> bool {
     dir_writable(&home)
 }
 
+fn cargo_binstall_available() -> bool {
+    Command::new("cargo")
+        .args(["binstall", "--version"])
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+
+fn install_plan(binstall_available: bool) -> Vec<&'static [&'static str]> {
+    if binstall_available {
+        vec![BINSTALL_ARGS, CARGO_INSTALL_ARGS]
+    } else {
+        vec![CARGO_INSTALL_ARGS]
+    }
+}
+
+fn run_cargo(args: &[&str]) -> std::io::Result<bool> {
+    eprintln!("Running: cargo {}", args.join(" "));
+    Command::new("cargo")
+        .args(args)
+        .status()
+        .map(|status| status.success())
+}
+
+fn run_install_plan(plan: &[&[&str]]) -> Result<()> {
+    for args in plan {
+        if run_cargo(args)? {
+            println!("stmo-cli updated successfully.");
+            return Ok(());
+        }
+        eprintln!("cargo {} failed, trying the next installer", args.join(" "));
+    }
+    anyhow::bail!("Could not update stmo-cli: every installer failed");
+}
+
 pub fn update() -> Result<()> {
     if !cargo_writable() {
         anyhow::bail!(
             "Cannot update stmo-cli in the current environment \
              (write access to ~/.cargo/ is restricted).\n\
-             Run this command outside the sandbox:\n  cargo binstall stmo-cli"
+             Run this command outside the sandbox:\n  stmo-cli update"
         );
     }
 
-    let status = std::process::Command::new("cargo")
-        .args(["binstall", "--no-confirm", "stmo-cli"])
-        .status();
-
-    match status {
-        Ok(s) if s.success() => {
-            println!("stmo-cli updated successfully.");
-            return Ok(());
-        }
-        _ => eprintln!("cargo binstall not available, falling back to cargo install"),
-    }
-
-    let status = std::process::Command::new("cargo")
-        .args(["install", "stmo-cli"])
-        .status()?;
-
-    if status.success() {
-        println!("stmo-cli updated successfully.");
-        Ok(())
-    } else {
-        anyhow::bail!("cargo install stmo-cli failed");
-    }
+    run_install_plan(&install_plan(cargo_binstall_available()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn test_install_plan_tries_binstall_before_locked_install() {
+        assert_eq!(install_plan(true), vec![BINSTALL_ARGS, CARGO_INSTALL_ARGS]);
+    }
+
+    #[test]
+    fn test_install_plan_without_binstall_uses_locked_install() {
+        assert_eq!(install_plan(false), vec![CARGO_INSTALL_ARGS]);
+    }
 
     #[test]
     fn test_dir_writable_on_writable_dir() {
