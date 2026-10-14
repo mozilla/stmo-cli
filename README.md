@@ -125,10 +125,10 @@ This creates/updates:
 - `queries/{id}.yaml` - Query metadata (name, parameters, visualizations, etc.)
 
 Saved query filenames use the stable Redash ID, so changing a query's title does not
-rename its local files. Existing `{id}-{slug}.*` files remain supported. Fetch migrates
-them to `{id}.*` only when their tracked content matches Redash; divergent files stay
-untouched and are reported. A successful deploy writes the server's resulting copy to
-`{id}.*`.
+rename its local files. Existing `{id}-{slug}.*` files remain supported. `fetch` and
+`deploy` migrate them to `{id}.*`: fetch only when their tracked content matches Redash
+(divergent files stay untouched and are reported), and a successful deploy writes the
+server's resulting copy to `{id}.*`.
 
 ### Deploy to Redash
 
