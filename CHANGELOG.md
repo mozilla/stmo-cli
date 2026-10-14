@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.0] - 2026-10-14
+
+### Breaking Changes
+- Saved query files are named by stable Redash ID: `queries/{id}.sql` and `queries/{id}.yaml` instead of `queries/{id}-{slug}.*`, so renaming a query no longer renames its local files. Existing `{id}-{slug}.*` files are still accepted; `fetch` migrates them to `{id}.*` only when they match Redash, and reports divergent ones untouched
+
+### Fixes
+- `deploy`: accept legacy query files with stale slugs
+- `fetch`: report legacy query files it cannot remove
+- `archive`: resolve all targets before archiving, and warn when cleanup skips incomplete query files
+- `fetch` / `deploy`: name the local query file matching the Redash copy when ambiguous
+- `fetch` / `deploy`: name the created query ID and fetch command after a collision
+
 ## [0.13.0] - 2026-10-14
 
 ### Features
