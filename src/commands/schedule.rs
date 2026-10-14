@@ -190,6 +190,17 @@ mod tests {
     }
 
     #[test]
+    fn find_yaml_accepts_legacy_file_whose_slug_is_stale() {
+        let temp_dir = TempDir::new().unwrap();
+        let queries_dir = temp_dir.path();
+        fs::write(queries_dir.join("1200000001-old-name.yaml"), SAMPLE_YAML).unwrap();
+        fs::write(queries_dir.join("1200000001-old-name.sql"), "SELECT 1").unwrap();
+
+        let found = find_yaml_path_in(queries_dir, 1_200_000_001).unwrap();
+        assert_eq!(found, Some(queries_dir.join("1200000001-old-name.yaml")));
+    }
+
+    #[test]
     fn find_yaml_finds_id_only_files() {
         let temp_dir = TempDir::new().unwrap();
         let queries_dir = temp_dir.path();

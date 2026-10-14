@@ -136,15 +136,14 @@ pub(crate) fn unique_query_file_set_by_id(dir: &Path, id: u64) -> Result<Option<
     Ok(file_sets.into_iter().next())
 }
 
-pub(crate) fn query_file_base(dir: &Path, id: u64, name: &str) -> PathBuf {
-    if id != 0 {
-        let id_base = dir.join(id.to_string());
-        if id_base.with_extension("sql").exists() || id_base.with_extension("yaml").exists() {
-            return id_base;
-        }
+pub(crate) fn query_file_base(dir: &Path, id: u64, name: &str) -> Result<PathBuf> {
+    if id != 0
+        && let Some(file_set) = unique_query_file_set_by_id(dir, id)?
+    {
+        return Ok(file_set.base);
     }
 
-    dir.join(format!("{id}-{}", query_slugify(name)))
+    Ok(dir.join(format!("{id}-{}", query_slugify(name))))
 }
 
 pub(crate) fn ensure_query_filename_matches_identity(
@@ -158,7 +157,7 @@ pub(crate) fn ensure_query_filename_matches_identity(
         .unwrap_or_default();
     let legacy_stem = format!("{id}-{}", query_slugify(name));
 
-    if (id != 0 && actual_stem == id.to_string()) || actual_stem == legacy_stem {
+    if (id != 0 && query_id_from_path(path) == Some(id)) || actual_stem == legacy_stem {
         return Ok(());
     }
 
@@ -195,4 +194,40 @@ pub(crate) fn ensure_filename_matches_identity(
         path.display(),
         expected.display(),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn identity_check_accepts_legacy_file_whose_slug_is_stale() {
+        let path = Path::new("queries/1200000001-old-slug.yaml");
+
+        ensure_query_filename_matches_identity(path, 1_200_000_001, "New Name").unwrap();
+    }
+
+    #[test]
+    fn identity_check_rejects_file_named_after_neither_id_nor_name() {
+        let path = Path::new("queries/1200000002-old-slug.yaml");
+
+        assert!(ensure_query_filename_matches_identity(path, 1_200_000_001, "New Name").is_err());
+    }
+
+    #[test]
+    fn query_file_base_reuses_stale_legacy_pair() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("1200000001-old-slug.sql"), "SELECT 1").unwrap();
+        fs::write(
+            temp_dir.path().join("1200000001-old-slug.yaml"),
+            "id: 1200000001",
+        )
+        .unwrap();
+
+        assert_eq!(
+            query_file_base(temp_dir.path(), 1_200_000_001, "New Name").unwrap(),
+            temp_dir.path().join("1200000001-old-slug")
+        );
+    }
 }

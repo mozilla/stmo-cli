@@ -99,7 +99,7 @@ pub(crate) fn tracked_query_content_differs(
 }
 
 fn read_local_query(id: u64, name: &str) -> Result<(String, QueryMetadata)> {
-    let base = crate::commands::query_file_base(Path::new("queries"), id, name);
+    let base = crate::commands::query_file_base(Path::new("queries"), id, name)?;
     let sql_path = base.with_extension("sql");
     let yaml_path = base.with_extension("yaml");
 
@@ -314,7 +314,7 @@ async fn deploy_visualizations(
 
 #[allow(clippy::too_many_lines)]
 pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Query> {
-    let source_base = crate::commands::query_file_base(Path::new("queries"), id, name);
+    let source_base = crate::commands::query_file_base(Path::new("queries"), id, name)?;
     let sql_path = source_base.with_extension("sql");
     let yaml_path = source_base.with_extension("yaml");
 
