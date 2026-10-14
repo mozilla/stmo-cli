@@ -53,7 +53,7 @@ Queries created during exploration are ephemeral by default.
 
 ## Cleanup
 
-Archive only what you created during exploration and don't want to keep. Do **not** archive queries or dashboards you only fetched to read, because that deletes them from Redash.
+Archive only what you created during exploration and don't want to keep. Archiving hides the query in Redash (`unarchive` restores it) and deletes its local `queries/` files. Do **not** archive queries you only fetched to read, because that removes the local copies you still need.
 
 ## mozdata integration
 
