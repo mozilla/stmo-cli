@@ -163,6 +163,13 @@ fn ambiguous_query_files_message(
     )
 }
 
+fn created_query_collision_message(created_id: u64, new_base: &Path) -> String {
+    format!(
+        "Query {created_id} was created on Redash, but local files already exist at {}.*; the draft files were preserved. Run `stmo-cli fetch {created_id}` to pull the Redash copy.",
+        new_base.display()
+    )
+}
+
 async fn ensure_unambiguous_query_files(client: &RedashClient, id: u64) -> Result<()> {
     let file_sets = crate::commands::query_file_sets_by_id(Path::new("queries"), id)?;
     if file_sets.len() <= 1 {
@@ -425,11 +432,7 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
         let fetched = client.get_query(created.id).await?;
         let new_base = Path::new("queries").join(fetched.id.to_string());
         if new_base.with_extension("sql").exists() || new_base.with_extension("yaml").exists() {
-            bail!(
-                "Query {} was created, but local files already exist at {}.*; the draft files were preserved",
-                fetched.id,
-                new_base.display()
-            );
+            bail!(created_query_collision_message(fetched.id, &new_base));
         }
         println!("  ✓ Created new query: {} - {name}", fetched.id);
         (fetched, new_base)
@@ -971,6 +974,17 @@ mod tests {
         assert!(err_msg.contains("id 1200000001"));
         assert!(err_msg.contains("first-example-query.yaml"));
         assert!(err_msg.contains("second-example-query.yaml"));
+    }
+
+    #[test]
+    fn created_query_collision_message_names_the_created_id_and_suggests_fetch() {
+        let message =
+            created_query_collision_message(1_200_000_001, Path::new("queries/1200000001"));
+
+        assert!(message.contains("Query 1200000001 was created"));
+        assert!(message.contains("queries/1200000001.*"));
+        assert!(message.contains("the draft files were preserved"));
+        assert!(message.contains(&format!("stmo-cli fetch {}", 1_200_000_001)));
     }
 
     #[test]
