@@ -25,6 +25,20 @@ fn find_query_files_in(queries_dir: &Path, query_id: u64) -> Result<Option<(Stri
     )))
 }
 
+type QueryFilePaths = (String, String);
+type ResolvedQuery = (u64, Option<QueryFilePaths>);
+
+fn resolve_query_files(query_ids: &[u64]) -> Result<Vec<ResolvedQuery>> {
+    resolve_query_files_in(Path::new("queries"), query_ids)
+}
+
+fn resolve_query_files_in(queries_dir: &Path, query_ids: &[u64]) -> Result<Vec<ResolvedQuery>> {
+    query_ids
+        .iter()
+        .map(|&query_id| Ok((query_id, find_query_files_in(queries_dir, query_id)?)))
+        .collect()
+}
+
 fn delete_query_files(sql_path: &str, yaml_path: &str) -> Result<()> {
     fs::remove_file(sql_path).context(format!("Failed to delete {sql_path}"))?;
     fs::remove_file(yaml_path).context(format!("Failed to delete {yaml_path}"))?;
@@ -35,11 +49,12 @@ pub async fn archive(client: &RedashClient, query_ids: Vec<u64>) -> Result<()> {
     let mut errors = Vec::new();
     let mut archived_count = 0;
 
+    let resolved = resolve_query_files(&query_ids)?;
+
     println!("Archiving {} queries...\n", query_ids.len());
 
-    for query_id in &query_ids {
-        let local_files = find_query_files(*query_id)?;
-        match client.archive_query(*query_id).await {
+    for (query_id, local_files) in resolved {
+        match client.archive_query(query_id).await {
             Ok(query) => {
                 println!("  ✓ Archived query {query_id} - {}", query.name);
 
@@ -57,7 +72,7 @@ pub async fn archive(client: &RedashClient, query_ids: Vec<u64>) -> Result<()> {
             }
             Err(e) => {
                 eprintln!("  ✗ Failed to archive query {query_id}: {e}");
-                errors.push((*query_id, e));
+                errors.push((query_id, e));
             }
         }
     }
@@ -222,5 +237,40 @@ mod tests {
             find_query_files_in(queries_dir, 1_200_000_001).unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn resolve_query_files_fails_before_archiving_when_a_later_id_is_ambiguous() {
+        let temp_dir = TempDir::new().unwrap();
+        let queries_dir = temp_dir.path();
+        fs::write(queries_dir.join("1200000001.sql"), "SELECT 1").unwrap();
+        fs::write(queries_dir.join("1200000001.yaml"), "id: 1200000001").unwrap();
+        fs::write(queries_dir.join("1200000002.sql"), "SELECT 2").unwrap();
+        fs::write(queries_dir.join("1200000002.yaml"), "id: 1200000002").unwrap();
+        fs::write(queries_dir.join("1200000002-old-slug.sql"), "SELECT 2").unwrap();
+        fs::write(
+            queries_dir.join("1200000002-old-slug.yaml"),
+            "id: 1200000002",
+        )
+        .unwrap();
+
+        let result = resolve_query_files_in(queries_dir, &[1_200_000_001, 1_200_000_002]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_query_files_pairs_each_id_with_its_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let queries_dir = temp_dir.path();
+        fs::write(queries_dir.join("1200000001.sql"), "SELECT 1").unwrap();
+        fs::write(queries_dir.join("1200000001.yaml"), "id: 1200000001").unwrap();
+
+        let resolved =
+            resolve_query_files_in(queries_dir, &[1_200_000_001, 1_200_000_002]).unwrap();
+
+        assert_eq!(resolved.len(), 2);
+        assert!(resolved[0].1.is_some());
+        assert_eq!(resolved[1], (1_200_000_002, None));
     }
 }
