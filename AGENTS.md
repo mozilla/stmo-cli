@@ -4,7 +4,7 @@ Redash CLI that gives AI coding assistants direct access to sql.telemetry.mozill
 
 ## Quick Reference
 
-**Commands**: `discover [--search TEXT] [--limit N]` `init [PATH]` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule` `snippets` `login`
+**Commands**: `discover [--search TEXT] [--limit N]` `init [PATH]` `guide` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule` `snippets` `login`
 **Env Vars**: `REDASH_API_KEY` (required unless stored via `login`), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
 On macOS, `REDASH_API_KEY` falls back to the `stmo-cli` item in the macOS Keychain
@@ -40,6 +40,8 @@ src/
     ├── deploy.rs        # Upload changes
     ├── execute.rs       # Execute queries
     ├── dynamic_dates.rs # Resolve d_* date/range tokens client-side (port of Redash frontend)
+    ├── guide.rs         # `guide`: prints agent instructions plus a command reference generated from clap
+    ├── guide.md         # Hand-written workflow prose printed by `guide`
     ├── datasources.rs   # List/explore data sources
     ├── archive.rs       # Archive/unarchive queries
     ├── schedule.rs      # Set/clear query refresh schedules (local YAML only; deploy to push)
