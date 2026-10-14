@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::api::RedashClient;
+use crate::commands::QueryFileSet;
 use crate::models::{Query, QueryMetadata, VisualizationMetadata};
 
 fn extract_query_ids_from_directory() -> Result<Vec<u64>> {
@@ -34,8 +35,7 @@ fn extract_query_ids_from_directory() -> Result<Vec<u64>> {
     Ok(query_ids)
 }
 
-fn write_fetched_query(query: &Query) -> Result<bool> {
-    let queries_dir = Path::new("queries");
+fn write_fetched_query(queries_dir: &Path, query: &Query) -> Result<bool> {
     let file_sets = crate::commands::query_file_sets_by_id(queries_dir, query.id)?;
 
     for file_set in &file_sets {
@@ -104,22 +104,33 @@ fn write_fetched_query(query: &Query) -> Result<bool> {
     fs::write(&yaml_path, yaml_content)
         .context(format!("Failed to write {}", yaml_path.display()))?;
 
-    let mut migrated = false;
-    for file_set in file_sets {
-        if file_set.base == canonical_base {
-            continue;
-        }
+    remove_legacy_file_sets(&file_sets, &canonical_base)
+}
 
-        if let Some(path) = file_set.sql {
-            fs::remove_file(&path).context(format!("Failed to delete {}", path.display()))?;
-        }
-        if let Some(path) = file_set.yaml {
-            fs::remove_file(&path).context(format!("Failed to delete {}", path.display()))?;
+fn remove_legacy_file_sets(file_sets: &[QueryFileSet], canonical_base: &Path) -> Result<bool> {
+    let mut migrated = false;
+    let mut leftovers = Vec::new();
+
+    for file_set in file_sets
+        .iter()
+        .filter(|file_set| file_set.base != canonical_base)
+    {
+        for path in file_set.sql.iter().chain(&file_set.yaml) {
+            if let Err(error) = fs::remove_file(path) {
+                leftovers.push(format!("{} ({error})", path.display()));
+            }
         }
         migrated = true;
     }
 
-    Ok(migrated)
+    if leftovers.is_empty() {
+        return Ok(migrated);
+    }
+    anyhow::bail!(
+        "Wrote {}.* but could not delete legacy query files: {}",
+        canonical_base.display(),
+        leftovers.join(", ")
+    );
 }
 
 pub async fn fetch(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Result<()> {
@@ -174,7 +185,7 @@ pub async fn fetch(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Res
     let mut fetched_count = 0;
 
     for query in &queries_to_fetch {
-        let migrated = match write_fetched_query(query) {
+        let migrated = match write_fetched_query(Path::new("queries"), query) {
             Ok(migrated) => migrated,
             Err(error) => {
                 eprintln!("  ✗ Query {} - {}: {error:#}", query.id, query.name);
@@ -233,6 +244,57 @@ pub async fn fetch(client: &RedashClient, query_ids: Vec<u64>, all: bool) -> Res
 #[cfg(test)]
 #[allow(clippy::missing_errors_doc)]
 mod tests {
+    use super::*;
+    use crate::models::QueryOptions;
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::TempDir;
+
+    fn make_query(sql: &str) -> Query {
+        Query {
+            id: 1_200_000_001,
+            name: "Example Query".to_string(),
+            description: None,
+            sql: sql.to_string(),
+            data_source_id: 1_500_000_001,
+            user: None,
+            schedule: None,
+            options: QueryOptions { parameters: vec![] },
+            visualizations: vec![],
+            tags: None,
+            is_archived: false,
+            is_draft: false,
+            updated_at: String::new(),
+            created_at: String::new(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_fetched_query_names_every_legacy_file_it_cannot_remove() {
+        let temp_dir = TempDir::new().unwrap();
+        let queries_dir = temp_dir.path();
+        let query = make_query("SELECT 1");
+        write_fetched_query(queries_dir, &query).unwrap();
+        let legacy_sql = queries_dir.join("1200000001-old-slug.sql");
+        let legacy_yaml = queries_dir.join("1200000001-old-slug.yaml");
+        fs::copy(queries_dir.join("1200000001.sql"), &legacy_sql).unwrap();
+        fs::copy(queries_dir.join("1200000001.yaml"), &legacy_yaml).unwrap();
+        fs::set_permissions(queries_dir, fs::Permissions::from_mode(0o555)).unwrap();
+
+        let result = write_fetched_query(queries_dir, &query);
+
+        fs::set_permissions(queries_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let message = format!("{:#}", result.unwrap_err());
+        assert!(
+            message.contains(&legacy_sql.display().to_string()),
+            "{message}"
+        );
+        assert!(
+            message.contains(&legacy_yaml.display().to_string()),
+            "{message}"
+        );
+    }
+
     #[test]
     fn test_slugify_simple() {
         assert_eq!(crate::commands::query_slugify("Hello World"), "hello-world");
