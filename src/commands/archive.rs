@@ -39,6 +39,16 @@ fn resolve_query_files_in(queries_dir: &Path, query_ids: &[u64]) -> Result<Vec<R
         .collect()
 }
 
+fn warn_if_incomplete_query_files(queries_dir: &Path, query_id: u64) -> Result<()> {
+    let file_sets = crate::commands::query_file_sets_by_id(queries_dir, query_id)?;
+    if !file_sets.is_empty() {
+        eprintln!(
+            "    ⚠ Incomplete local files for query {query_id} (need both .sql and .yaml); not deleted"
+        );
+    }
+    Ok(())
+}
+
 fn delete_query_files(sql_path: &str, yaml_path: &str) -> Result<()> {
     fs::remove_file(sql_path).context(format!("Failed to delete {sql_path}"))?;
     fs::remove_file(yaml_path).context(format!("Failed to delete {yaml_path}"))?;
@@ -140,7 +150,11 @@ pub async fn cleanup(client: &RedashClient) -> Result<()> {
                                 cleaned_count += 1;
                             }
                         }
-                        Ok(None) => {}
+                        Ok(None) => {
+                            if let Err(e) = warn_if_incomplete_query_files(queries_dir, *query_id) {
+                                eprintln!("    ✗ Failed to locate local files: {e}");
+                            }
+                        }
                         Err(e) => {
                             eprintln!("    ✗ Failed to locate local files: {e}");
                             errors.push((*query_id, e));
