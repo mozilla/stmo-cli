@@ -21,7 +21,7 @@ jobs:
       run: python3 scripts/check_synthetic_fixtures.py
     - name: Install Rust toolchain
       run: rustup show active-toolchain
-    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
     - name: Run tests
       run: cargo test --workspace --verbose
 
@@ -42,7 +42,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Install Rust toolchain
       run: rustup show active-toolchain
-    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
     - name: Run clippy
       run: cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -D warnings
 
@@ -56,7 +56,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Install Rust toolchain
       run: rustup show active-toolchain
-    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
     - name: Build
       run: cargo build --workspace --verbose
     - name: Build release
