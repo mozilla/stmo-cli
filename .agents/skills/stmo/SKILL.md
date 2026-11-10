@@ -24,6 +24,8 @@ reference generated from the installed version. If `guide` is not a recognized c
 (older builds bundled elsewhere), run `stmo-cli --help` instead. Treat that output as the
 source of truth for commands, flags, file formats, SQL style, and workflows.
 
+If stmo-cli prints a newer-version notice, tell the user and recommend upgrading before deploying: `stmo-cli update` (0.4.0 and later), or `cargo binstall stmo-cli` on older builds that lack `update`.
+
 ## Prerequisites
 
 Before running any stmo-cli command (except `init` and `update`), verify `REDASH_API_KEY` is set. If missing, every command fails immediately with:
