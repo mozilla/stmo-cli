@@ -35,7 +35,7 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 dialoguer = "0.12"
-moz-cli-version-check = "0.2.4"
+moz-cli-version-check = "0.3.0"
 serde_path_to_error = "0.1"
 
 [dev-dependencies]
