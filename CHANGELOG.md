@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.15.0] - 2026-11-10
+
+### Features
+- `update`: the version notice points to `stmo-cli update`
+- `guide`: agents recommend updating stmo-cli, and nudge users on older builds to upgrade
+
+### Fixes
+- `update`: fall back to `cargo install --locked` when the update path fails
+
 ## [0.14.0] - 2026-10-14
 
 ### Breaking Changes
