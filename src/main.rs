@@ -417,6 +417,7 @@ fn is_llm_environment() -> bool {
 
 const LLM_HELP: &str = r#"stmo-cli — Redash CLI for sql.telemetry.mozilla.org. Explore data sources, run queries, deploy dashboards.
 REDASH_API_KEY required | REDASH_URL optional (default: https://sql.telemetry.mozilla.org)
+If stmo-cli reports a newer version, tell the user and recommend running `stmo-cli update` before deploying.
 On macOS, REDASH_API_KEY falls back to the 'stmo-cli' item in the macOS Keychain; run `stmo-cli login` once in your own terminal to store it there (an AI coding assistant session may not have an interactive terminal to prompt in).
 `init` is an interactive wizard (git repo? initial commit? linters? pre-commit hooks? AGENTS.md?) and likewise needs a real terminal — run it yourself, not from an AI coding assistant session.
 API key: https://sql.telemetry.mozilla.org/users/me → API Key section
