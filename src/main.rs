@@ -449,7 +449,9 @@ fn print_llm_help() {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let version_checker = VersionChecker::new("stmo-cli", env!("CARGO_PKG_VERSION"));
+    let version_checker = VersionChecker::new("stmo-cli", env!("CARGO_PKG_VERSION"))
+        .with_update_command("stmo-cli update")
+        .with_extra_notice("ACTION REQUIRED: stmo-cli is out of date. Update it before deploying.");
     version_checker.check_async();
 
     if is_llm_environment() && std::env::args().any(|arg| arg == "--help" || arg == "-h") {
