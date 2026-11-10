@@ -108,7 +108,7 @@ fn read_local_query(id: u64, name: &str) -> Result<(String, QueryMetadata)> {
         fs::read_to_string(&sql_path).context(format!("Failed to read {}", sql_path.display()))?;
     let metadata_content = fs::read_to_string(&yaml_path)
         .context(format!("Failed to read {}", yaml_path.display()))?;
-    let metadata: QueryMetadata = serde_yaml::from_str(&metadata_content)
+    let metadata: QueryMetadata = yaml_serde::from_str(&metadata_content)
         .context(format!("Failed to parse {}", yaml_path.display()))?;
 
     Ok((sql, metadata))
@@ -122,7 +122,7 @@ fn query_file_set_matches_server(file_set: &QueryFileSet, server: &Query) -> Res
         fs::read_to_string(sql_path).context(format!("Failed to read {}", sql_path.display()))?;
     let metadata_content =
         fs::read_to_string(yaml_path).context(format!("Failed to read {}", yaml_path.display()))?;
-    let metadata: QueryMetadata = serde_yaml::from_str(&metadata_content)
+    let metadata: QueryMetadata = yaml_serde::from_str(&metadata_content)
         .context(format!("Failed to parse {}", yaml_path.display()))?;
     Ok(!tracked_query_differs(&sql, &metadata, server))
 }
@@ -271,7 +271,7 @@ fn get_all_query_metadata_from_path(queries_dir: &Path) -> Result<Vec<(u64, Stri
             let metadata_content =
                 fs::read_to_string(&path).context(format!("Failed to read {}", path.display()))?;
 
-            let metadata: crate::models::QueryMetadata = serde_yaml::from_str(&metadata_content)
+            let metadata: crate::models::QueryMetadata = yaml_serde::from_str(&metadata_content)
                 .context(format!("Failed to parse {}", path.display()))?;
 
             crate::commands::ensure_query_filename_matches_identity(
@@ -325,7 +325,7 @@ fn write_query_yaml(path: &str, query: &Query) -> Result<()> {
     };
 
     let yaml_content =
-        serde_yaml::to_string(&metadata).context("Failed to serialize query metadata")?;
+        yaml_serde::to_string(&metadata).context("Failed to serialize query metadata")?;
     fs::write(path, yaml_content).context(format!("Failed to write {path}"))
 }
 
@@ -409,7 +409,7 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
     let metadata_content = fs::read_to_string(&yaml_path)
         .context(format!("Failed to read {}", yaml_path.display()))?;
 
-    let metadata: crate::models::QueryMetadata = serde_yaml::from_str(&metadata_content)
+    let metadata: crate::models::QueryMetadata = yaml_serde::from_str(&metadata_content)
         .context(format!("Failed to parse {}", yaml_path.display()))?;
 
     let yaml_display = yaml_path.display().to_string();
@@ -1031,7 +1031,7 @@ mod tests {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let dir = temp_dir.path();
         let yaml =
-            serde_yaml::to_string(&make_query_metadata("Example Query", 1_500_000_001)).unwrap();
+            yaml_serde::to_string(&make_query_metadata("Example Query", 1_500_000_001)).unwrap();
         fs::write(dir.join("1200000001.sql"), "SELECT 1").unwrap();
         fs::write(dir.join("1200000001.yaml"), &yaml).unwrap();
         fs::write(dir.join("1200000001-old-slug.sql"), "SELECT 2").unwrap();

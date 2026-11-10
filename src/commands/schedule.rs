@@ -16,7 +16,7 @@ fn find_yaml_path_in(dir: &Path, query_id: u64) -> Result<Option<PathBuf>> {
 
     let content = fs::read_to_string(&yaml_path)
         .context(format!("Failed to read {}", yaml_path.display()))?;
-    let metadata: QueryMetadata = serde_yaml::from_str(&content)
+    let metadata: QueryMetadata = yaml_serde::from_str(&content)
         .context(format!("Failed to parse {}", yaml_path.display()))?;
     if metadata.id != query_id {
         bail!(
@@ -37,14 +37,14 @@ fn find_yaml_path_in(dir: &Path, query_id: u64) -> Result<Option<PathBuf>> {
 fn update_yaml_schedule(yaml_path: &Path, schedule: Option<Schedule>) -> Result<String> {
     let content =
         fs::read_to_string(yaml_path).context(format!("Failed to read {}", yaml_path.display()))?;
-    let mut metadata: QueryMetadata = serde_yaml::from_str(&content)
+    let mut metadata: QueryMetadata = yaml_serde::from_str(&content)
         .context(format!("Failed to parse {}", yaml_path.display()))?;
 
     let name = metadata.name.clone();
     metadata.schedule = schedule;
 
     let yaml_content =
-        serde_yaml::to_string(&metadata).context("Failed to serialize query metadata")?;
+        yaml_serde::to_string(&metadata).context("Failed to serialize query metadata")?;
     fs::write(yaml_path, yaml_content)
         .context(format!("Failed to write {}", yaml_path.display()))?;
 
@@ -153,7 +153,7 @@ mod tests {
         .unwrap();
 
         let content = fs::read_to_string(&yaml_path).unwrap();
-        let metadata: QueryMetadata = serde_yaml::from_str(&content).unwrap();
+        let metadata: QueryMetadata = yaml_serde::from_str(&content).unwrap();
         let s = metadata.schedule.unwrap();
         assert_eq!(s.interval, Some(86_400));
         assert_eq!(s.time, Some("07:15".to_owned()));
@@ -172,7 +172,7 @@ mod tests {
         update_yaml_schedule(&yaml_path, None).unwrap();
 
         let content = fs::read_to_string(&yaml_path).unwrap();
-        let metadata: QueryMetadata = serde_yaml::from_str(&content).unwrap();
+        let metadata: QueryMetadata = yaml_serde::from_str(&content).unwrap();
         assert!(metadata.schedule.is_none());
     }
 

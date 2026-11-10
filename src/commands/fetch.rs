@@ -50,7 +50,7 @@ fn write_fetched_query(queries_dir: &Path, query: &Query) -> Result<bool> {
             .context(format!("Failed to read {}", sql_path.display()))?;
         let yaml_content = fs::read_to_string(yaml_path)
             .context(format!("Failed to read {}", yaml_path.display()))?;
-        let metadata: QueryMetadata = serde_yaml::from_str(&yaml_content)
+        let metadata: QueryMetadata = yaml_serde::from_str(&yaml_content)
             .context(format!("Failed to parse {}", yaml_path.display()))?;
 
         if metadata.id != query.id {
@@ -95,7 +95,7 @@ fn write_fetched_query(queries_dir: &Path, query: &Query) -> Result<bool> {
         tags: query.tags.clone(),
     };
     let yaml_content =
-        serde_yaml::to_string(&metadata).context("Failed to serialize query metadata")?;
+        yaml_serde::to_string(&metadata).context("Failed to serialize query metadata")?;
 
     let canonical_base = queries_dir.join(query.id.to_string());
     let sql_path = canonical_base.with_extension("sql");
