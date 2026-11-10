@@ -2,6 +2,7 @@
 
 `stmo-cli` manages Redash queries and dashboards on sql.telemetry.mozilla.org. It works from any directory, not only a repository.
 Optional for Claude Code users: install the [mozdata Claude plugin](https://github.com/akkomar/mozdata-claude-plugin?tab=readme-ov-file#installation) for Mozilla telemetry expertise and discovery.
+If stmo-cli reports a newer version, tell the user and recommend running `stmo-cli update` before deploying.
 
 ## Data Exploration
 
