@@ -51,7 +51,7 @@ fn load_query_metadata_by_id_in(
 
     let yaml_content = fs::read_to_string(&yaml_path)
         .context(format!("Failed to read {}", yaml_path.display()))?;
-    let metadata: QueryMetadata = serde_yaml::from_str(&yaml_content)
+    let metadata: QueryMetadata = yaml_serde::from_str(&yaml_content)
         .context(format!("Failed to parse {}", yaml_path.display()))?;
     if metadata.id != query_id {
         bail!(

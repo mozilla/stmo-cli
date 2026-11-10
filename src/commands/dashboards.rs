@@ -52,7 +52,7 @@ fn dashboard_metadata(dashboard: &Dashboard) -> DashboardMetadata {
 
 fn write_dashboard_metadata(path: &Path, metadata: &DashboardMetadata) -> Result<()> {
     let yaml_content =
-        serde_yaml::to_string(metadata).context("Failed to serialize dashboard metadata")?;
+        yaml_serde::to_string(metadata).context("Failed to serialize dashboard metadata")?;
     fs::write(path, yaml_content).context(format!("Failed to write {}", path.display()))?;
     Ok(())
 }
@@ -575,7 +575,7 @@ fn widget_id_location(path: &str) -> String {
     }
 }
 
-fn explain_parse_error(error: &serde_path_to_error::Error<serde_yaml::Error>) -> String {
+fn explain_parse_error(error: &serde_path_to_error::Error<yaml_serde::Error>) -> String {
     let path = error.path().to_string();
     let message = error.inner().to_string();
     if is_missing_or_null_widget_id(&path, &message) {
@@ -589,7 +589,7 @@ fn explain_parse_error(error: &serde_path_to_error::Error<serde_yaml::Error>) ->
 
 fn parse_dashboard_yaml(path: &Path, yaml: &str) -> Result<DashboardMetadata> {
     let metadata: DashboardMetadata = serde_path_to_error::deserialize(
-        serde_yaml::Deserializer::from_str(yaml),
+        yaml_serde::Deserializer::from_str(yaml),
     )
     .map_err(|error| {
         anyhow::anyhow!(
@@ -884,7 +884,7 @@ mod tests {
         write_dashboard_metadata(&path, &metadata).unwrap();
 
         let saved: DashboardMetadata =
-            serde_yaml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+            yaml_serde::from_str(&fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(saved.id, SAMPLE_DASHBOARD_ID);
         assert_eq!(saved.slug, "test-dashboard");
         assert_eq!(saved.tags, ["test"]);
@@ -949,7 +949,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(dashboard.id, SAMPLE_DASHBOARD_ID);
-        let saved: DashboardMetadata = serde_yaml::from_str(
+        let saved: DashboardMetadata = yaml_serde::from_str(
             &fs::read_to_string(
                 dashboards_dir
                     .path()

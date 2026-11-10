@@ -89,7 +89,7 @@ fn get_all_snippet_metadata_from_path(snippets_dir: &Path) -> Result<Vec<(u64, S
             let metadata_content =
                 fs::read_to_string(&path).context(format!("Failed to read {}", path.display()))?;
 
-            let metadata: SnippetMetadata = serde_yaml::from_str(&metadata_content)
+            let metadata: SnippetMetadata = yaml_serde::from_str(&metadata_content)
                 .context(format!("Failed to parse {}", path.display()))?;
 
             crate::commands::ensure_filename_matches_identity(
@@ -143,7 +143,7 @@ fn read_local_snippet(id: u64, trigger: &str) -> Result<(String, SnippetMetadata
     let metadata_content =
         fs::read_to_string(&yaml_path).context(format!("Failed to read {yaml_path}"))?;
     let metadata: SnippetMetadata =
-        serde_yaml::from_str(&metadata_content).context(format!("Failed to parse {yaml_path}"))?;
+        yaml_serde::from_str(&metadata_content).context(format!("Failed to parse {yaml_path}"))?;
 
     Ok((body, metadata))
 }
@@ -202,7 +202,7 @@ fn write_snippet_files(snippet: &QuerySnippet) -> Result<()> {
     };
     let yaml_path = format!("snippets/{filename_base}.yaml");
     let yaml_content =
-        serde_yaml::to_string(&metadata).context("Failed to serialize snippet metadata")?;
+        yaml_serde::to_string(&metadata).context("Failed to serialize snippet metadata")?;
     fs::write(&yaml_path, yaml_content).context(format!("Failed to write {yaml_path}"))?;
 
     Ok(())
@@ -297,7 +297,7 @@ pub async fn deploy_one(client: &RedashClient, id: u64, trigger: &str) -> Result
         fs::read_to_string(&yaml_path).context(format!("Failed to read {yaml_path}"))?;
 
     let metadata: SnippetMetadata =
-        serde_yaml::from_str(&metadata_content).context(format!("Failed to parse {yaml_path}"))?;
+        yaml_serde::from_str(&metadata_content).context(format!("Failed to parse {yaml_path}"))?;
 
     let result = if id == 0 {
         let create = CreateQuerySnippet {

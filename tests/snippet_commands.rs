@@ -223,7 +223,7 @@ async fn test_fetch_command_handles_trigger_with_spaces_and_quotes() {
     assert_eq!(sql, "parse_date(foo, bar)");
 
     let yaml = std::fs::read_to_string(yaml_path).unwrap();
-    let metadata: stmo_cli::models::SnippetMetadata = serde_yaml::from_str(&yaml).unwrap();
+    let metadata: stmo_cli::models::SnippetMetadata = yaml_serde::from_str(&yaml).unwrap();
     assert_eq!(metadata.id, 900_000_003);
     assert_eq!(metadata.trigger, "example's snippet");
 

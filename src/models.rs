@@ -611,7 +611,7 @@ tags:
   - example-tag
 ";
 
-        let metadata: QueryMetadata = serde_yaml::from_str(yaml).unwrap();
+        let metadata: QueryMetadata = yaml_serde::from_str(yaml).unwrap();
         assert_eq!(metadata.id, 1_200_000_001);
         assert_eq!(metadata.name, "Test Query");
         assert_eq!(metadata.data_source_id, 1_500_000_001);
@@ -693,7 +693,7 @@ trigger: example_snippet
 description: Example SQL snippet
 ";
 
-        let metadata: SnippetMetadata = serde_yaml::from_str(yaml).unwrap();
+        let metadata: SnippetMetadata = yaml_serde::from_str(yaml).unwrap();
         assert_eq!(metadata.id, 1_700_000_001);
         assert_eq!(metadata.trigger, "example_snippet");
         assert_eq!(
@@ -701,8 +701,8 @@ description: Example SQL snippet
             Some("Example SQL snippet".to_string())
         );
 
-        let reserialized = serde_yaml::to_string(&metadata).unwrap();
-        let roundtripped: SnippetMetadata = serde_yaml::from_str(&reserialized).unwrap();
+        let reserialized = yaml_serde::to_string(&metadata).unwrap();
+        let roundtripped: SnippetMetadata = yaml_serde::from_str(&reserialized).unwrap();
         assert_eq!(roundtripped.id, metadata.id);
         assert_eq!(roundtripped.trigger, metadata.trigger);
     }
@@ -982,7 +982,7 @@ widgets:
       parameter_mappings: null
 ";
 
-        let metadata: DashboardMetadata = serde_yaml::from_str(yaml).unwrap();
+        let metadata: DashboardMetadata = yaml_serde::from_str(yaml).unwrap();
         assert_eq!(metadata.id, 1_000_000_001);
         assert_eq!(metadata.name, "Test Dashboard");
         assert_eq!(metadata.slug, "test-dashboard");
@@ -1013,7 +1013,7 @@ options:
   parameter_mappings: null
 ";
 
-        let widget: WidgetMetadata = serde_yaml::from_str(yaml).unwrap();
+        let widget: WidgetMetadata = yaml_serde::from_str(yaml).unwrap();
         assert_eq!(widget.id, 1_100_000_001);
         assert!(widget.visualization_id.is_none());
         assert!(widget.query_id.is_none());
@@ -1043,7 +1043,7 @@ options:
       type: dashboard-level
 ";
 
-        let widget: WidgetMetadata = serde_yaml::from_str(yaml).unwrap();
+        let widget: WidgetMetadata = yaml_serde::from_str(yaml).unwrap();
         assert_eq!(widget.id, 1_100_000_002);
         assert_eq!(widget.visualization_id, Some(1_300_000_001));
         assert_eq!(widget.query_id, Some(1_200_000_002));
@@ -1229,5 +1229,241 @@ options:
         )
         .unwrap();
         assert_eq!(c.type_name, Some("datetime".to_string()));
+    }
+
+    const QUERY_METADATA_GOLDEN: &str = r#"id: 900000001
+name: Synthetic yes/no/on/off query
+description: |
+  First line
+  Second line: with colon
+data_source_id: 900000002
+user_id: 900000003
+schedule:
+  interval: 86400
+  time: 06:00
+  day_of_week: null
+  until: null
+options:
+  parameters:
+  - name: flag
+    title: Flag
+    type: enum
+    value: yes
+    enumOptions: |
+      yes
+      no
+      on
+      off
+      null
+  - name: limit
+    title: Limit
+    type: number
+    value: 42
+  - name: dates
+    title: Dates
+    type: text
+    value: null
+    queryId: 900000004
+    multiValuesOptions:
+      prefix: ''''
+      suffix: ''''
+      separator: ','
+      quoteCharacter: '"'
+visualizations:
+- id: 900000005
+  name: Table
+  type: TABLE
+  options:
+    columns:
+    - name: a
+      visible: true
+    itemsPerPage: 25
+  description: null
+tags:
+- synthetic
+- 'colon: inside'
+"#;
+
+    const SNIPPET_METADATA_GOLDEN: &str = r"id: 900000022
+trigger: syn_tricky
+description: 'on: off, # not a comment ~ 1e3 0x1F 2026-11-10 true'
+";
+
+    const DASHBOARD_METADATA_GOLDEN: &str = r"id: 900000030
+name: Synthetic dashboard
+slug: synthetic-dashboard
+user_id: 900000031
+is_draft: false
+is_archived: false
+dashboard_filters_enabled: true
+tags:
+- synthetic
+- yes
+widgets:
+- id: 900000032
+  width: 1
+  text: |
+    Synthetic note:
+
+    - first item
+    - second: item
+  options:
+    position:
+      col: 0
+      row: 1
+      sizeX: 3
+      sizeY: 8
+- id: 900000033
+  width: 2
+  visualization_id: 900000005
+  query_id: 900000001
+  visualization_name: Table
+  options:
+    position:
+      col: 0
+      row: 1
+      sizeX: 3
+      sizeY: 8
+    parameterMappings:
+      flag:
+        mapTo: flag
+        type: dashboard-level
+        value: null
+";
+
+    fn synthetic_query_metadata() -> QueryMetadata {
+        QueryMetadata {
+            id: 900_000_001,
+            name: "Synthetic yes/no/on/off query".to_string(),
+            description: Some("First line\nSecond line: with colon\n".to_string()),
+            data_source_id: 900_000_002,
+            user_id: Some(900_000_003),
+            schedule: Some(Schedule {
+                interval: Some(86400),
+                time: Some("06:00".to_string()),
+                day_of_week: None,
+                until: None,
+            }),
+            options: QueryOptions {
+                parameters: vec![
+                    Parameter {
+                        name: "flag".to_string(),
+                        title: "Flag".to_string(),
+                        param_type: "enum".to_string(),
+                        value: Some(serde_json::json!("yes")),
+                        enum_options: Some("yes\nno\non\noff\nnull\n".to_string()),
+                        query_id: None,
+                        multi_values_options: None,
+                    },
+                    Parameter {
+                        name: "limit".to_string(),
+                        title: "Limit".to_string(),
+                        param_type: "number".to_string(),
+                        value: Some(serde_json::json!(42)),
+                        enum_options: None,
+                        query_id: None,
+                        multi_values_options: None,
+                    },
+                    Parameter {
+                        name: "dates".to_string(),
+                        title: "Dates".to_string(),
+                        param_type: "text".to_string(),
+                        value: Some(serde_json::Value::Null),
+                        enum_options: None,
+                        query_id: Some(900_000_004),
+                        multi_values_options: Some(MultiValuesOptions {
+                            prefix: Some("'".to_string()),
+                            suffix: Some("'".to_string()),
+                            separator: Some(",".to_string()),
+                            quote_character: Some("\"".to_string()),
+                        }),
+                    },
+                ],
+            },
+            visualizations: vec![VisualizationMetadata {
+                id: Some(900_000_005),
+                name: "Table".to_string(),
+                viz_type: "TABLE".to_string(),
+                options: serde_json::json!({
+                    "itemsPerPage": 25,
+                    "columns": [{"name": "a", "visible": true}]
+                }),
+                description: None,
+            }],
+            tags: Some(vec!["synthetic".to_string(), "colon: inside".to_string()]),
+        }
+    }
+
+    fn synthetic_snippet_metadata() -> SnippetMetadata {
+        SnippetMetadata {
+            id: 900_000_022,
+            trigger: "syn_tricky".to_string(),
+            description: Some("on: off, # not a comment ~ 1e3 0x1F 2026-11-10 true".to_string()),
+        }
+    }
+
+    fn synthetic_dashboard_metadata() -> DashboardMetadata {
+        DashboardMetadata {
+            id: 900_000_030,
+            name: "Synthetic dashboard".to_string(),
+            slug: "synthetic-dashboard".to_string(),
+            user_id: 900_000_031,
+            is_draft: false,
+            is_archived: false,
+            filters_enabled: true,
+            tags: vec!["synthetic".to_string(), "yes".to_string()],
+            widgets: vec![
+                WidgetMetadata {
+                    id: 900_000_032,
+                    width: 1,
+                    visualization_id: None,
+                    query_id: None,
+                    visualization_name: None,
+                    text: "Synthetic note:\n\n- first item\n- second: item\n".to_string(),
+                    options: synthetic_widget_options(None),
+                },
+                WidgetMetadata {
+                    id: 900_000_033,
+                    width: 2,
+                    visualization_id: Some(900_000_005),
+                    query_id: Some(900_000_001),
+                    visualization_name: Some("Table".to_string()),
+                    text: String::new(),
+                    options: synthetic_widget_options(Some(serde_json::json!({
+                        "flag": {"mapTo": "flag", "type": "dashboard-level", "value": null}
+                    }))),
+                },
+            ],
+        }
+    }
+
+    fn synthetic_widget_options(parameter_mappings: Option<serde_json::Value>) -> WidgetOptions {
+        WidgetOptions {
+            position: WidgetPosition {
+                col: 0,
+                row: 1,
+                size_x: 3,
+                size_y: 8,
+            },
+            parameter_mappings,
+        }
+    }
+
+    #[test]
+    fn test_query_metadata_yaml_matches_golden_output() {
+        let yaml = yaml_serde::to_string(&synthetic_query_metadata()).unwrap();
+        assert_eq!(yaml, QUERY_METADATA_GOLDEN);
+    }
+
+    #[test]
+    fn test_snippet_metadata_yaml_matches_golden_output() {
+        let yaml = yaml_serde::to_string(&synthetic_snippet_metadata()).unwrap();
+        assert_eq!(yaml, SNIPPET_METADATA_GOLDEN);
+    }
+
+    #[test]
+    fn test_dashboard_metadata_yaml_matches_golden_output() {
+        let yaml = yaml_serde::to_string(&synthetic_dashboard_metadata()).unwrap();
+        assert_eq!(yaml, DASHBOARD_METADATA_GOLDEN);
     }
 }

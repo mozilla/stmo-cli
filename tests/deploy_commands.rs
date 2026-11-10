@@ -291,7 +291,7 @@ async fn test_deploy_writes_back_newly_created_viz() {
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
     let yaml = std::fs::read_to_string("queries/1200000001.yaml").unwrap();
-    let metadata: stmo_cli::models::QueryMetadata = serde_yaml::from_str(&yaml).unwrap();
+    let metadata: stmo_cli::models::QueryMetadata = yaml_serde::from_str(&yaml).unwrap();
 
     let created = metadata
         .visualizations
@@ -328,7 +328,7 @@ async fn test_deploy_writes_back_local_options_for_matched_viz() {
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
     let yaml = std::fs::read_to_string("queries/1200000001.yaml").unwrap();
-    let metadata: stmo_cli::models::QueryMetadata = serde_yaml::from_str(&yaml).unwrap();
+    let metadata: stmo_cli::models::QueryMetadata = yaml_serde::from_str(&yaml).unwrap();
 
     let matched = metadata
         .visualizations
@@ -365,7 +365,7 @@ async fn test_deploy_new_query_writes_back_created_viz() {
     assert!(result.is_ok(), "Deploy failed: {:?}", result.err());
 
     let yaml = std::fs::read_to_string("queries/1200000001.yaml").unwrap();
-    let metadata: stmo_cli::models::QueryMetadata = serde_yaml::from_str(&yaml).unwrap();
+    let metadata: stmo_cli::models::QueryMetadata = yaml_serde::from_str(&yaml).unwrap();
 
     assert!(
         metadata

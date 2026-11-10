@@ -1066,7 +1066,7 @@ async fn test_deploy_recreates_widget_when_query_changes() {
     drop(current_widgets);
 
     let saved_yaml = std::fs::read_to_string(fixture.yaml_path).unwrap();
-    let saved: serde_yaml::Value = serde_yaml::from_str(&saved_yaml).unwrap();
+    let saved: yaml_serde::Value = yaml_serde::from_str(&saved_yaml).unwrap();
     let saved_widget = &saved["widgets"][0];
     assert_eq!(saved_widget["id"].as_u64(), Some(SAMPLE_CREATED_WIDGET_ID));
     assert_eq!(saved_widget["query_id"].as_u64(), Some(TARGET_QUERY_ID));
