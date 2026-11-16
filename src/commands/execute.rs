@@ -254,14 +254,11 @@ fn format_results_table(result: &crate::models::QueryResult, limit: Option<usize
     for row in &result.data.rows[..rows_to_show] {
         if let serde_json::Value::Object(obj) = row {
             for col in &result.data.columns {
-                let value = obj
-                    .get(&col.name)
-                    .map(|v| match v {
-                        serde_json::Value::Null => "NULL".to_string(),
-                        serde_json::Value::String(s) => s.clone(),
-                        _ => v.to_string(),
-                    })
-                    .unwrap_or_default();
+                let value = obj.get(&col.name).map_or_default(|v| match v {
+                    serde_json::Value::Null => "NULL".to_string(),
+                    serde_json::Value::String(s) => s.clone(),
+                    _ => v.to_string(),
+                });
 
                 let truncated = if value.chars().count() > 18 {
                     let prefix: String = value.chars().take(15).collect();
