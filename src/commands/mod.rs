@@ -8,6 +8,7 @@ pub mod execute;
 pub mod fetch;
 pub mod guide;
 pub mod init;
+pub mod query_api_key;
 pub mod schedule;
 pub mod snippets;
 pub mod update;

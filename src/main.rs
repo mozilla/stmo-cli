@@ -190,6 +190,15 @@ enum Commands {
         clear: bool,
     },
 
+    #[command(
+        about = "Print a query's Redash API key (a credential) to stdout",
+        long_about = "Print a query's Redash API key to stdout, exactly one line.\n\nThe key is never written to queries/ or any other file."
+    )]
+    QueryApiKey {
+        #[arg(help = "Query ID whose API key to print")]
+        query_id: u64,
+    },
+
     #[command(about = "Update stmo-cli to the latest version")]
     Update,
 
@@ -276,6 +285,9 @@ async fn run_command(client: RedashClient, command: Commands) -> Result<()> {
     match command {
         Commands::Discover { search, limit } => {
             commands::discover::discover(&client, search.as_deref(), limit).await?;
+        }
+        Commands::QueryApiKey { query_id } => {
+            commands::query_api_key::show_query_api_key(&client, query_id).await?;
         }
         Commands::Init { .. } | Commands::Update | Commands::Login | Commands::Guide => {
             unreachable!()
@@ -425,6 +437,7 @@ API key: https://sql.telemetry.mozilla.org/users/me → API Key section
 discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N] [--timeout SECS]
 execute --data-source ID [--file PATH|-] [--param k=v]...: ad-hoc SQL from a file or stdin ('-' or omit --file = read stdin), no tracked query created (no schema, so no d_* dates or multi-value expansion — inline values in the SQL)
 data-sources [ID] [--schema] [--refresh] [--format table|json] | archive IDs | archive --cleanup | unarchive IDs | init [PATH] | update | login | guide (agent instructions for this version)
+query-api-key ID: prints that query's Redash API key (a credential) to stdout only; never write it to queries/ or any other file
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
 snippets list|fetch [IDs] [--all]|deploy [IDs] [--all]|delete IDs
 
