@@ -239,8 +239,9 @@ async fn deploy_dashboards(
 
     for slug in dashboard_slugs {
         match deploy_single_dashboard(client, slug, dashboards_dir).await {
-            Ok(name) => {
+            Ok((name, url)) => {
                 println!("  ✓ {name}");
+                println!("    {url}");
                 success_count += 1;
             }
             Err(e) => {
@@ -615,7 +616,7 @@ async fn deploy_single_dashboard(
     client: &RedashClient,
     dashboard_slug: &str,
     dashboards_dir: &Path,
-) -> Result<String> {
+) -> Result<(String, String)> {
     let yaml_path = find_dashboard_yaml(dashboard_slug, dashboards_dir)?;
     let yaml_content = fs::read_to_string(&yaml_path)
         .context(format!("Failed to read {}", yaml_path.display()))?;
@@ -638,7 +639,8 @@ async fn deploy_single_dashboard(
     let refreshed = client.get_dashboard(&target.slug).await?;
     save_dashboard_yaml(&refreshed, target.old_yaml_path)?;
 
-    Ok(refreshed.name)
+    let url = client.dashboard_url(&refreshed.slug);
+    Ok((refreshed.name, url))
 }
 
 pub async fn archive(client: &RedashClient, dashboard_slugs: Vec<String>) -> Result<()> {

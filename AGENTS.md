@@ -64,7 +64,7 @@ src/
 ## API Client (api.rs)
 
 **Query**: list_my_queries, get_query, fetch_all_queries, create_query, create_or_update_query
-**Search**: search_queries(q, limit), search_dashboards(q, limit); `base_url()` accessor
+**Search**: search_queries(q, limit), search_dashboards(q, limit); `query_url(id)` / `dashboard_url(slug)` build web UI links
 **Visualization**: create_visualization, update_visualization
 **Execution**: refresh_query, poll_job, get_query_result, execute_query_with_polling, refresh_adhoc_query, get_adhoc_query_result, execute_adhoc_with_polling
 **Data Source**: list_data_sources, get_data_source, get_data_source_schema
