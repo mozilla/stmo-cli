@@ -191,11 +191,11 @@ enum Commands {
     },
 
     #[command(
-        about = "Print a query's Redash API key (a credential) to stdout",
-        long_about = "Print a query's Redash API key to stdout, exactly one line.\n\nThe key is never written to queries/ or any other file."
+        about = "Print a query's own API key (not your REDASH_API_KEY) to stdout",
+        long_about = "Print a query's own Redash API key to stdout, exactly one line.\n\nThis is not your personal REDASH_API_KEY. The key only grants access to this one query.\n\nThe key is never written to queries/ or any other file."
     )]
     QueryApiKey {
-        #[arg(help = "Query ID whose API key to print")]
+        #[arg(help = "Query ID whose own API key to print (not your REDASH_API_KEY)")]
         query_id: u64,
     },
 
@@ -437,7 +437,7 @@ API key: https://sql.telemetry.mozilla.org/users/me → API Key section
 discover [--search TEXT] [--limit N] | fetch [IDs] [--all] | deploy [IDs] [--all] | execute ID [--format table|json] [--param k=v]... [--interactive] [--limit N] [--timeout SECS]
 execute --data-source ID [--file PATH|-] [--param k=v]...: ad-hoc SQL from a file or stdin ('-' or omit --file = read stdin), no tracked query created (no schema, so no d_* dates or multi-value expansion — inline values in the SQL)
 data-sources [ID] [--schema] [--refresh] [--format table|json] | archive IDs | archive --cleanup | unarchive IDs | init [PATH] | update | login | guide (agent instructions for this version)
-query-api-key ID: prints that query's Redash API key (a credential) to stdout only; never write it to queries/ or any other file
+query-api-key ID: prints that query's own Redash API key to stdout, one line. It is not your REDASH_API_KEY and only grants access to that one query; never write it to queries/ or any other file
 dashboards discover|fetch SLUGS|deploy SLUGS [--all]|archive SLUGS|unarchive SLUGS
 snippets list|fetch [IDs] [--all]|deploy [IDs] [--all]|delete IDs
 
