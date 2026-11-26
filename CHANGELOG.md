@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- `query-api-key <query-id>`: print a query's Redash API key to stdout (a credential, never written to disk)
+
 ## [0.16.0] - 2026-11-26
 
 ### Features
