@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- `deploy` / `dashboards deploy`: print the STMO web URL of each deployed query and dashboard
+
 ## [0.15.0] - 2026-11-10
 
 ### Features
