@@ -35,8 +35,13 @@ impl RedashClient {
     }
 
     #[must_use]
-    pub fn base_url(&self) -> &str {
-        &self.base_url
+    pub fn query_url(&self, query_id: u64) -> String {
+        format!("{}/queries/{query_id}", self.base_url)
+    }
+
+    #[must_use]
+    pub fn dashboard_url(&self, slug: &str) -> String {
+        format!("{}/dashboard/{slug}", self.base_url)
     }
 
     async fn get_json<T: DeserializeOwned>(&self, url: &str, ctx: &str) -> Result<T> {

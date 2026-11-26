@@ -66,14 +66,12 @@ async fn discover_by_search(client: &RedashClient, term: &str, limit: usize) -> 
     let queries = queries?;
     let dashboards = dashboards?;
 
-    let base = client.base_url();
-
     println!("=== QUERIES ({}) ===\n", queries.len());
     if queries.is_empty() {
         println!("  No queries found for '{term}'.");
     } else {
         for query in &queries {
-            let url = format!("{base}/queries/{}", query.id);
+            let url = client.query_url(query.id);
             println!(
                 "{}",
                 format_resource_line(query.id, &query.name, &url, query.is_draft)
@@ -89,7 +87,7 @@ async fn discover_by_search(client: &RedashClient, term: &str, limit: usize) -> 
         println!("  No dashboards found for '{term}'.");
     } else {
         for dashboard in &dashboards {
-            let url = format!("{base}/dashboard/{}", dashboard.slug);
+            let url = client.dashboard_url(&dashboard.slug);
             println!(
                 "{}",
                 format_resource_line(dashboard.id, &dashboard.name, &url, dashboard.is_draft)

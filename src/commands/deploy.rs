@@ -482,6 +482,7 @@ pub async fn deploy_one(client: &RedashClient, id: u64, name: &str) -> Result<Qu
             final_base.display()
         );
     }
+    println!("    {}", client.query_url(final_query.id));
 
     Ok(final_query)
 }

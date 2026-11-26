@@ -978,3 +978,14 @@ async fn test_search_queries_retries_on_429() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].name, "Example Query One");
 }
+
+#[test]
+fn web_urls_use_ui_paths_not_api_paths() {
+    let client = RedashClient::new("https://sql.example.org".to_string(), "test-key").unwrap();
+
+    assert_eq!(client.query_url(42), "https://sql.example.org/queries/42");
+    assert_eq!(
+        client.dashboard_url("my-dash"),
+        "https://sql.example.org/dashboard/my-dash"
+    );
+}
