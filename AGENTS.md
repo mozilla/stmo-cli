@@ -4,7 +4,7 @@ Redash CLI that gives AI coding assistants direct access to sql.telemetry.mozill
 
 ## Quick Reference
 
-**Commands**: `discover [--search TEXT] [--limit N]` `init [PATH]` `guide` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule` `snippets` `login`
+**Commands**: `discover [--search TEXT] [--limit N]` `init [PATH]` `guide` `fetch` `deploy` `execute [ID] [--data-source ID [--file PATH|-]]` `data-sources` `archive` `unarchive` `dashboards` `schedule` `snippets` `query-api-key <query-id>` `login`
 **Env Vars**: `REDASH_API_KEY` (required unless stored via `login`), `REDASH_URL` (optional, defaults to sql.telemetry.mozilla.org)
 
 On macOS, `REDASH_API_KEY` falls back to the `stmo-cli` item in the macOS Keychain
@@ -45,6 +45,7 @@ src/
     ├── datasources.rs   # List/explore data sources
     ├── archive.rs       # Archive/unarchive queries
     ├── schedule.rs      # Set/clear query refresh schedules (local YAML only; deploy to push)
+    ├── query_api_key.rs # Print one query's Redash API key to stdout (never saved)
     ├── dashboards.rs    # Dashboard management
     └── snippets.rs      # Query snippet management (no archive concept — delete is direct)
 ```
@@ -63,7 +64,7 @@ src/
 
 ## API Client (api.rs)
 
-**Query**: list_my_queries, get_query, fetch_all_queries, create_query, create_or_update_query
+**Query**: list_my_queries, get_query, get_query_api_key, fetch_all_queries, create_query, create_or_update_query
 **Search**: search_queries(q, limit), search_dashboards(q, limit); `query_url(id)` / `dashboard_url(slug)` build web UI links
 **Visualization**: create_visualization, update_visualization
 **Execution**: refresh_query, poll_job, get_query_result, execute_query_with_polling, refresh_adhoc_query, get_adhoc_query_result, execute_adhoc_with_polling

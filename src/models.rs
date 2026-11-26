@@ -165,6 +165,11 @@ pub struct QueriesResponse {
     pub page_size: u64,
 }
 
+#[derive(Deserialize)]
+pub struct QueryApiKeyResponse {
+    pub api_key: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VisualizationMetadata {
     #[serde(

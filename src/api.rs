@@ -2,7 +2,8 @@
 
 use crate::models::{
     CreateDashboard, CreateQuery, CreateQuerySnippet, CreateWidget, Dashboard, DashboardSummary,
-    DashboardsResponse, DataSource, DataSourceSchema, QueriesResponse, Query, QuerySnippet,
+    DashboardsResponse, DataSource, DataSourceSchema, QueriesResponse, Query, QueryApiKeyResponse,
+    QuerySnippet,
 };
 use anyhow::{Context, Result};
 use reqwest::{Client, header};
@@ -93,6 +94,14 @@ impl RedashClient {
     pub async fn get_query(&self, query_id: u64) -> Result<Query> {
         let url = format!("{}/api/queries/{query_id}", self.base_url);
         self.get_json(&url, &format!("query {query_id}")).await
+    }
+
+    pub async fn get_query_api_key(&self, query_id: u64) -> Result<String> {
+        let url = format!("{}/api/queries/{query_id}", self.base_url);
+        let response: QueryApiKeyResponse = self
+            .get_json(&url, &format!("query {query_id} api key"))
+            .await?;
+        Ok(response.api_key)
     }
 
     pub async fn list_data_sources(&self) -> Result<Vec<DataSource>> {
